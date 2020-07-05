@@ -1,22 +1,23 @@
 pico-8 cartridge // http://www.pico-8.com
-version 18
+version 16
 __lua__
--- brutal pico race 1.0.3
+-- brutal race 
 -- @yourykiki
 
+--local showhud=false
 local scale,
-      rdz--rb length
+      rdz,--rb length
+      nb_rb,--rb number
+      road
       =
-      48,64
+      48,64,16,{}
 local frm,endfrm,nb_finish,
       nb_player,nb_ai,
       nb_player_and_ai,
       num_trk,
       spxmax,
       trklen,lastnss,nss,
-      racepos,rd_info,
-      nb_rb,--rb number
-      road
+      racepos,rd_info
       
 -- player infos
 local cam,
@@ -25,38 +26,29 @@ local cam,
       ship,ctrl,ssp,sssp,rot,
       ird,--pl road indice
       spd,sdx,--,skyx
-      height,yoffset,ctr,csy,
-      ai_skill
+      height,yoffset,ctr,csy
       ={},
        {},{},
        {},{},
        {},{},{},{},{},
        {},
        {},{},
-       128,{},{},128,
-       0
+       128,{},{},128
 
 local ship_info={
-{name="aura  ",accel=2},
-{name="blitz ",accel=2},
-{name="astral",accel=3},
-{name="surge ",accel=2},
-{name="storm ",accel=3},
-{name="titan ",accel=3},
-{name="viper ",accel=2},
-{name="blaze ",accel=2},
-{name="tiger ",accel=1},
-{name="raven ",accel=1}
+{name="rezar ",accel=2},
+{name="virto ",accel=2},
+{name="tridnz",accel=3},
+{name="pk-12 ",accel=2},
+{name="f1000 ",accel=3},
+{name="xz-20 ",accel=3},
+{name="tw-50 ",accel=2},
+{name="7rider",accel=2},
+{name="ectox ",accel=1},
+{name="lt-ai ",accel=1}
 }
 
 function _init()
- cartdata"brutalpicorace"
---	menuitem(1,"reset time",
---  function()
---   for i=0,24 do
---    dset(i,21600)
---   end
---  end)
  scn_intro={
   init=init_intro,
   update=update_intro,
@@ -74,27 +66,19 @@ function _update()
 end
 function _draw()
  scn.draw()
- for i=0,16 do
-  pal(i,i+128,1)
- end
 end
 function init_game()
- if nb_player==1 then
-  music(10,0,12)
- else
-  music"-1"
- end
-
- sfx"42"
- cls""
+ music(-1)
+ sfx(42)
+-- cls()
  frm,endfrm,nb_finish,racepos=
   0,0,0,{}
  init_all_road(
-  parse_trk(num_trk))
+  parse_trk(trk_str[num_trk]))
  -- half-pipe
  rd_info={}
  for i=0,6 do
-  local lof7,at=(24+i)*128,0
+  local lof7,at=i*128,0
   local stp={
    dx=peek(0x2000+lof7),
    dy=peek(0x2001+lof7),
@@ -125,15 +109,19 @@ function init_game()
  csy=height
  --loading
  for p=1,nb_player_and_ai do
+  nss[p]=p>nb_player and 10 or nss[p]
   loadship(p,nss[p]-1)
   initshipaccel(ship[p])
   -- human
   if p<=nb_player then
    cam[p],sdx[p],
    yoffset[p],ctr[p]=
-    {x=0,y=128,z=0,flw=p},0,
+    {x=0,y=128,z=0},0,
     height*(p-1),
     {x=64,y=height/4}
+  else
+   ssp[p].skill=ai_skill
+   ai_skill-=0.5
   end
   --start on segment 1
   add(road[1].pl,p)
@@ -144,17 +132,15 @@ function initshipaccel(shipp)
  val0,val1,
  shipp.accurv,
  shipp.r_acc,
- absc,coef=
-  0,0,{},{},{0,25,50,100},1
- if (ai_skill>1) coef=1-(3-ai_skill)*0.2
-  
+ absc=
+  0,0,{},{},{0,25,50,100}
  for j=1,#absc-1 do
   val1=peek_spr(0x2c+64*(shipp.accel),j*2)
   from,to=absc[j],absc[j+1]
   for i=from,to do
    shipp.accurv[i]=lerp(
     val0,val1,
-    (i-from)/(to-from))*coef
+    (i-from)/(to-from))
    if shipp.r_acc[
     flr(shipp.accurv[i])]==nil then
     shipp.r_acc[
@@ -163,17 +149,17 @@ function initshipaccel(shipp)
   end
   val0=val1
  end
- shipp.spxmax=9-shipp.accel*1.5
+ shipp.spxmax=(5-shipp.accel)*2
 end
 
 -- loading a ship
 function loadss(nbss,ss,sss)
  local m,xmin,xmax,zmin,zmax=
   0,8,0,8,0
- for k=7,0,-1 do-- y
-  for j=0,7 do-- x
+ for k=7,0,-1 do--sprite y
+  for j=0,7 do--sprite x
    local shad=false
-   for i=2,0,-1 do
+   for i=2,0,-1 do--layer
     c=sget(8*i+j,k+nbss*8)
     if c~=0 then
      v,shad=
@@ -184,7 +170,7 @@ function loadss(nbss,ss,sss)
      add(ss,v)
     end
    end
-   --half z
+   --half z  k%2==0
    if shad and k%2==0 then
     v={x=j-4,y=0,z=4-k,
      oz=0,c=9,pat=1}
@@ -210,22 +196,12 @@ function update_cntdn(p,ctrlp,spdp,sspp)
   end
  end
 end
-
-function update_end(p,ctrlp,spd,ssp)
+function update_end(p,ctrlp,spd)
  ctrlp.left,ctrlp.right,ctrlp.boost,
-  ctrlp.accel,ctrlp.brake,pbtn=
- false,false,false,false,false,p-1
+  ctrlp.accel,ctrlp.brake=
+ false,false,false,false,false
  if p<=nb_player then
-  if frm>endfrm+45 then
-   local flw=cam[p].flw
-   if (btnp(2,pbtn)) flw+=1
-   if (btnp(3,pbtn)) flw-=1
-   cam[p].flw=mid(1,flw,nb_player_and_ai)
-  end
-  snd_engine(pbtn,spd)
- end
- if ssp.hp<=0 then
-   create_pspark(ssp,spd.z,0,0)
+  snd_engine(p,spd)
  end
 end
 
@@ -233,12 +209,12 @@ function update_game()
  frm+=1
  for p=1,nb_player_and_ai do
   -- where is the spaceship ?
-  local sspp,backcam,spdp
-   =ssp[p],false,spd[p]
+  -- one lap
+  local sspp,camp,spdp
+   =ssp[p],cam[p],spd[p]
   if (sspp.z-4)>=trklen then
    sspp.z-=trklen
-   backcam=true
-   sspp.rlap+=1
+   if (camp~=nil) camp.z-=trklen
   end
   --old ship location on road
   -- +1 for array access
@@ -253,44 +229,41 @@ function update_game()
   if oird~=irdp then
    del(oldpl,p)
    add(v.pl,p)
-  end
-  -- update a player/ai
-  spxmax=ship[p].spxmax
-  --handle control
-  sspp.update(p,ctrl[p],spdp,sspp)
-  updateship(p,v,vn,sspp,rot[p],spdp,ctrl[p],ship[p])
-  -- camera tracking
-  for i=1,nb_player do
-   local camp=cam[i]
-   if camp~=nil and camp.flw==p then
-    if (backcam) camp.z-=trklen
-    --sky
-    sdx[i]-=spdp.z*v.fx/32
-    --set with 30fps 10/30
-    camp.x,camp.y,camp.z=
-     lerp(camp.x,ssp[p].x,0.3333333),
-     14+lerp(camp.y,ssp[p].y,0.3333333),
-     lerp(camp.z,ssp[p].z-cdz,0.5)
+   -- laps
+   if band(v.t,256)==256 then
+    sspp.lap+=1
    end
   end
+  -- update a player/ai
+  local shipp,ctrlp=
+   ship[p],ctrl[p]
+  spxmax=shipp.spxmax
+  --handle control
+  sspp.update(p,ctrlp,spdp,sspp)
+  updateship(p,v,vn,sspp,rot[p],spdp,camp,ctrlp,shipp)
  end
- --if (frm%15==0)
+ -- calc ships rank
+ if frm%15==0 then
   calcrank()
+ end
+ -- particules
  update_particles(p_spark)
  update_particles(p_boost)
  update_particles(p_trail)
+ -- end race ?
  race_end()
 end
 
 function calcrank()
  local ranks={}
+ 
  for p=1,nb_player_and_ai do
   ranks[p]={
-   key=ssp[p].z+ssp[p].rlap*trklen,
+   key=ssp[p].z+ssp[p].lap*trklen,
    p=p
   }
  end
- shellsort(ranks)
+ ce_heap_sort(ranks)
  for p=1,nb_player_and_ai do
   ssp[ranks[p].p].rank=
    nb_player_and_ai-p+1
@@ -301,14 +274,15 @@ function race_end()
  if nb_finish>=nb_player then
   if endfrm==0 then
    endfrm=frm
-  elseif frm>endfrm+150 
+  elseif frm>(endfrm+150)
    and btnp(4) then
-    start_scene(scn_intro)
+   start_scene(scn_intro)
   end
  end
 end
 
 -- road index
+-- f(pos.z)
 function get_ird(pos)
  -- 4 offset for shadow
  return flr((pos.z-4)/rdz)%#road
@@ -316,17 +290,17 @@ end
 
 function update_ai(p,ctrlp,spd,sspp)
  -- +skill=+decision
- if rnd"10">6-ai_skill then
+ if rnd(10)>(7-sspp.skill) then
   -- where to go ?
   local xmin,xmax=
    sspp.xmin,sspp.xmax
   local v=road[ird[p]+1]
   if band(v.t,2)==2 
-   and v.fx<-2 then
-   xmin,xmax=58,70
+   and v.fx<0 then
+   xmin,xmax=66,76
   elseif band(v.t,8)==8
-   and v.fx>2 then
-   xmin,xmax=-70,-58
+   and v.fx>0 then
+   xmin,xmax=-66,-76
   end
   -- avoid other ships
   for pn=1,nb_player_and_ai do
@@ -353,31 +327,28 @@ function update_ai(p,ctrlp,spd,sspp)
    ctrlp.right,ctrlp.left=
     false,false
   end
-  --adaptive boost among 1st player
-  if rnd"32">30-ai_skill+ssp[1].rank
-    and abs(v.fx)<8 then
-   if ctrlp.cdn_bst==10 then
-    ctrlp.boost=false
-   elseif ctrlp.can_bst then
-    ctrlp.boost=true
-   end
-  end
  end
- -- accel,decel
- if spd.prc<=55+ai_skill*10 then
+ -- accel,decel,boost
+ if spd.z<(7+sspp.skill) then
   ctrlp.accel=true
+  if v.fx==0 and ctrlp.cdn_bst==10
+   and rnd(20)>19 then
+   ctrlp.boost=false
+  elseif ctrlp.can_bst 
+   and rnd(20)>19 then
+   ctrlp.boost=true
+   
+  end
  else
-  ctrlp.accel=rnd"10">5-ai_skill
+  ctrlp.accel=rnd(10)>6
  end
- 
- -- race finished
- if is_race_ended(sspp) then
+  
+ -- race finished ?
+ if sspp.lap>3 then
   sspp.update=update_end
-  if (sspp.hp>0) add(racepos,p)
+  add(racepos,p)
  end
- sspp.frm+=1
 end
-
 
 function update_player(p,ctrlp,spd,ssp)
  -- left / right
@@ -387,40 +358,25 @@ function update_player(p,ctrlp,spd,ssp)
   btn(0,pbtn),btn(1,pbtn),
   btn(2,pbtn) and ctrlp.can_bst,
   btn(4,pbtn),btn(5,pbtn)
+ -- sky
+ sdx[p]-=spd.z*v.fx/32
  -- sfx
- if ctrlp.cdn_bst>0 then
-  sfx(46,pbtn*2,mid(0,ctrlp.cdn_bst,9)*2,2)
+ if ctrlp.cdn_bst>0 
+   and ctrlp.can_bst then
+  sfx(46,-1,mid(0,ctrlp.cdn_bst,9)*2,2)
  else
-  snd_engine(pbtn,spd)
+  snd_engine(p,spd)
  end
- ssp.frm+=1
- 
  -- race finished
- if is_race_ended(ssp) then
-  ssp.update=update_end
+ if ssp.lap>3 then
   nb_finish+=1
-  if ssp.hp>0 then
-   add(racepos,p)
-   -- update time
-   local iscr=num_trk*4+ai_skill-1
-   if ssp.frm<dget(iscr) 
-    or dget(iscr)==0 then
-    dset(iscr,ssp.frm)
-   end
-  else
-   sfx"63"
-  end
+  ssp.update=update_end
+  add(racepos,p)
  end
 end
 
-function is_race_ended(sspp)
- return sspp.rlap>2 
-    and sspp.z>256
-     or sspp.hp<=0
-end
-
-function updateship(p,v,vn,sspp,
-  rot,spdp,ctrlp,shipp)
+function updateship(p,v,vn,sspp,rot,spdp,camp,ctrlp,shipp)
+ --apply
  if ctrlp.left then
   spdp.x=lerp(spdp.x,-spxmax,0.2)
  end
@@ -431,28 +387,28 @@ function updateship(p,v,vn,sspp,
     not ctrlp.right then
   spdp.x=lerp(spdp.x,0,0.2) 
  end
+ -- boost
  if ctrlp.boost then
   -- charging
-  ctrlp.cdn_bst=min(10,
-    ctrlp.cdn_bst+recover_cdn(sspp))
+  ctrlp.cdn_bst=min(10,ctrlp.cdn_bst+recover_cdn(shipp))
  elseif not ctrlp.boost
   and ctrlp.cdn_bst>0 then
   -- applying
-  if (p<=nb_player) sfx(45,(p-1)*2)
+  if (p<=nb_player) sfx(45,p+1)
   spdp.bz+=ctrlp.cdn_bst*0.5
   ctrlp.cdn_bst,ctrlp.can_bst=
    -ctrlp.cdn_bst*2,
    false
  else 
   local bef=ctrlp.can_bst
-  ctrlp.cdn_bst=min(0,
-   ctrlp.cdn_bst+recover_cdn(sspp))
+  ctrlp.cdn_bst=min(0,ctrlp.cdn_bst+recover_cdn(shipp))
   ctrlp.can_bst=not btn(2,p-1) and ctrlp.cdn_bst>=0
   if not bef and ctrlp.can_bst
-    and p<=nb_player then sfx"49"
+    and p<=nb_player then sfx(49)
   end
  end
  spdp.bz=max(0,spdp.bz-0.025)
+ -- accel -1*...
  local dy=(v.y-vn.y)/8
  if ctrlp.accel then
   spdp.prc,spdp.gz=
@@ -478,6 +434,7 @@ function updateship(p,v,vn,sspp,
  -- epsilon
  if (abs(spdp.gz)<0.1) spdp.gz=0
  -- new pos,spd gz and boost z
+ -- update position z
  local spdpz=spdp.z+spdp.gz+spdp.bz
  sspp.z=sspp.z
   +sin(atan2(spdp.x,spdpz))
@@ -492,8 +449,8 @@ function updateship(p,v,vn,sspp,
  -- move ship left/right
  -- phx pseudo phy
  local phx=
-  -(1*spdpz/getaccel(shipp.accurv,100)
-     *v.fx*0.78)
+  -(1*spdp.z/getaccel(shipp.accurv,100)
+     *v.fx*0.8)
  sspp.xflat+=spdp.x+phx+spdp.gx
  -- ship col
  for pn=1,nb_player_and_ai do
@@ -508,7 +465,7 @@ function updateship(p,v,vn,sspp,
     -- response
     local resx,resz,sgnx,mn_m=
      spdp.x+phx/2,
-     (spdp.z+spdpn.z)/2*0.9,
+     (spdp.z+spdpn.z)/2*0.8,
      sgn(sspp.xflat-ssppn.xflat),
      shippn.mass/shipp.mass
     -- ship mass
@@ -518,6 +475,7 @@ function updateship(p,v,vn,sspp,
     spdp.z=resz*mn_m
     spdp.prc=get_r_accel(
      shipp.r_acc,spdp.z)
+    shipp.hp-=4
     --ship pn
     ssppn.xflat+=resx
     ssppn.z+=resz
@@ -525,22 +483,16 @@ function updateship(p,v,vn,sspp,
     spdpn.z=resz/mn_m
     spdpn.prc=get_r_accel(
      shippn.r_acc,spdpn.z)
-    -- fx with cooldown
-    if frm-spdp.cdn>10 then 
-     sspp.hp-=getdamage()
-     ssppn.hp-=getdamage()
-    end
+    shippn.hp-=4
     -- fx
     if not isnotvisible(sspp,cam[1],0) then
-     sfx"43"
+     sfx(43)
     end
-    create_pspark(
+    create_particles(p_spark,
      {x=(sspp.x+ssppn.x)/2,
       y=(sspp.y+ssppn.y)/2,
       z=(sspp.z+ssppn.z)/2},
-     (spdp.z+spdpn.z)/2,
-     0,0
-    )
+     {z=(spdp.z+spdpn.z)/2})
    end
   end
  end
@@ -565,10 +517,17 @@ function updateship(p,v,vn,sspp,
  sssp[p].xflat=sspp.xflat
  convert_xflat_to_x(sssp[p],xtmp,ytmp,rot)
  sssp[p].y+=ytmp
+ -- camera tracking
+ if camp~=nil then
+  --set with 30fps 10/30
+  camp.x,camp.y,camp.z=
+   lerp(camp.x,sspp.x,0.3333333),
+   14+lerp(camp.y,sspp.y,0.3333333),
+   lerp(camp.z,sspp.z-cdz,0.5)
+ end
 end
 
-function handle_road_collision(
-  sspp,v,vn,xtmp,spdp,shipp,prc)
+function handle_road_collision(sspp,v,vn,xtmp,spdp,shipp,prc)
 
  local xl,xr=v.x-56,v.x+56
  local l1,l2,l3,r1,r2,r3=
@@ -614,42 +573,37 @@ function handle_road_collision(
  -- collision common
  if coll~=0 then
   if frm-spdp.cdn>10 then 
-   spdp.z*=0.85
-   sspp.hp-=getdamage()
-   spdp.prc,spdp.cdn,
-   sspp.xmin,sspp.xmax=
-    get_r_accel(
-     shipp.r_acc,spdp.z),
-    frm,-5,5
+   spdp.z*=0.8
+   spdp.prc=get_r_accel(
+    shipp.r_acc,spdp.z)
+   spdp.cdn=frm
+   shipp.hp-=4
+   sspp.xmin,sspp.xmax=-5,5
    if not isnotvisible(sspp,cam[1],0) then
-    sfx"44"
+    sfx(44)
    end
   end
   -- fx
-  create_pspark(sspp,spdp.z,
-   rot.z,coll)
+  create_particles(p_spark,
+   {x=sspp.x+coll*cos(rot.z)*8,
+    y=sspp.y+sin(rot.z)*8,
+    z=sspp.z},{z=spdp.z*0.8})
  end
 end
 
-function create_pspark(sspp,
-  spdpz,rz,coll)
- create_particles(p_spark,
-  {x=sspp.x+coll*cos(rz)*8,
-   y=sspp.y+sin(rz)*8,
-   z=sspp.z},{z=spdpz*0.8})
-end
-
 function applyrot(ss,m,sort)
+ local rr={}
  -- faster 0.02cpu but +30 tokens
  local xx,xy,xz,
        yx,yy,yz,
-       zx,zy,zz,rr
+       zx,zy,zz
           =m.xx,m.xy,m.xz,
            m.yx,m.yy,m.yz,
-           m.zx,m.zy,m.zz,
-           {}
+           m.zx,m.zy,m.zz
 
  for v in all(ss) do
+--  if not half or v.oz%2==0 or v.c==10
+--   or v.c==9 and v.pat==1 then
    local r={}
    r.x,r.y,r.z,
    r.c,r.pat=
@@ -659,9 +613,10 @@ function applyrot(ss,m,sort)
     v.c,v.pat
    r.key=r.z
    add(rr,r)
+--  end
  end
  -- z sort
- if (sort) shellsort(rr)
+ if (sort) ce_heap_sort(rr)
  return rr
 end
 
@@ -677,8 +632,7 @@ function init_all_road(trk)
    0,h
   for j=1,len do
    v={x=0,y=0,z=i*rdz,
-    fx=t.curv,c=13,t=4,
-    pl={},parts={}}
+    fx=t.curv,c=13,t=4,pl={},parts={}}
    --curvy road
    local fx=v.fx
    if i==4 then
@@ -718,8 +672,7 @@ function draw_game()
   clip(0,h+(p-1),128,height)
   camera(0,-h)
   -- sky
-  local flw=cam[p].flw
-  local sdy=flr(ctr[p].y+ssp[flw].y/16)
+  local sdy=flr(ctr[p].y+ssp[p].y/16)
   rectfill(0,0,128,sdy-1,skyc1)
   rectfill(0,sdy,128,sdy,skyc2)
   rectfill(0,sdy+1,128,sdy+1,skyc3)
@@ -729,61 +682,45 @@ function draw_game()
    b=not b
   	spr(ofsky,(sdx[p]+i)%160-32,sdy-16,4,2,b)
   end
-  -- draw game
+  -- draw road and entities
   cx,cy=ctr[p].x,ctr[p].y
-  drawroad(cam[p],ird[flw],flw)
+  drawroad(cam[p],ird[p],p)
   -- speed
   local spz,sspp=
-   spd[flw].z+spd[flw].gz+spd[flw].bz,
+   spd[p].z+spd[p].gz+spd[p].bz,
    ssp[p]
   -- hud
   drawbar(7,spz,12,9)
-  drawbar(5,ctrl[flw].cdn_bst,12,
-   ctrl[flw].can_bst and 11 or 8)
-  drawbar(3,ssp[flw].hp,100,8)
-  rectfill(95,0,123,18,1)
-  print("lap "..
-    min(sspp.rlap+1,3)
-   .."/3",96,1,7)
+  drawbar(5,ctrl[p].cdn_bst,12,
+   ctrl[p].can_bst and 11 or 8)
+  drawbar(3,ship[p].hp,100,8)
+  rectfill(95,2,123,14,1)
+  print("lap "..mid(1,3,sspp.lap)
+   .."/3",
+   96,3,7)
   print("pos "..sspp.rank.."/"
-   ..nb_player_and_ai,96,7)
-  print(formattime(sspp.frm),96,13)
-  rectfill(4,12,4,height-4,6)
-  for i=1,nb_player_and_ai do
-   local h=lerp(height-4,12,
-    ssp[i].z/trklen) 
-   rectfill(4,h,7,h,i==flw and 7 or 6)
-  end
-  if endfrm>0 then
-   spr_grd(racepos[1]==p 
-     and 195 or 227,
-    48,24,32,15,0x1b0,offset)
-  end
+   ..nb_player_and_ai,96,9)
  end
- --restore
+ --restore camera
  clip()
  camera(0,0)
  -- countdown
  if frm<150 then
   local start=107+flr(frm/30)
   offset+=1
-  spr_grd(start,60,32,8,15,0x1b0,offset)
-  print("press ⬆️ to charge boost",
-   16,height-6,5)
+  spr_grd(start,60,32,8,16,0x1b0,offset)
  end
  -- endrace
  if endfrm>0 then
-  offset+=1
-  local w,h=66,#racepos*6+2
-  local by=(124-h)/2
-  rectfill(31,by,31+w,by+h,1)
-  rect(31,by,31+w,by+h,0)
-  for i=1,#racepos do
+   local w,h=44,#racepos*6+2
+   local by=(124-h)/2
+   rectfill(42,by,42+w,by+h,1)
+   rect(42,by,42+w,by+h,0)
+   for i=1,#racepos do
    print(i..
     " "..ship[racepos[i]].name..
-    " "..formattime(
-      ssp[racepos[i]].frm),
-    33,(i-1)*6+by+2,7)
+    " "..racepos[i],
+    45,(i-1)*6+by+2,7)
   end
  end
  if nb_player==1 then
@@ -795,26 +732,31 @@ function draw_game()
      and 10 or 0)
   end
   spr(7,60,0,4,2)
-  local hps=3-flr(ssp[1].hp/25)
+  local hps=3-flr(ship[1].hp/25)
   if hps>0 then
-   hps=min(hps,4)
+   hps=min(hps,3)
    spr(161+2*hps,68,0,2,2)
   end
   palt()
   pal()
  end
  -- debug
--- print(stat(1),0,0,6)
--- print("cpu="..stat(1))
+-- print("cpu="..stat(1)
 --  .." fps="..stat(7)
 --  .." ram="..stat(0)
 --  ,0,height-5,1)
+--[[ print("camx="..cam[1].x
+  .." sspx="..ssp[1].x,0,32)
+]]-- 
+ --cross
+ --rectfill(cx-1,cy,cx+1,cy,7)
+ --rectfill(cx,cy-1,cx,cy+1,7)
 end
 
 function drawroad(cam,ird,p)
  -- calculating road
  local r,rn,cfx,v,vn,vz=
-  nil,nil--render info
+  nil,nil,0--render info
  -- first partial offset
  local irdn=ird+1
  local irdlast=ird+nb_rb-1
@@ -828,64 +770,64 @@ function drawroad(cam,ird,p)
 
  -- ready to draw road
  for i=irdlast,ird-1,-1 do
+  r={}--render current
   v,vn=road[i%#road+1],
    road[(i+1)%#road+1]
---  vz=v.z+flr(i/#road)*trklen
-  vz,xl,xr,iy,ylgt=
-   v.z+flr(i/#road)*trklen,
+  vz=v.z+flr(i/#road)*trklen
+  xl,xr,iy,ylgt=
    v.x-56,v.x+56,v.y,
    lerp(v.y,vn.y,0.5)
   -- clip
   dz=max(vz-cam.z,7)
 
-  prc=(cam.z+7-vz)/rdz
   if dz==7 then
    --interpolation
+   prc=(cam.z+7-vz)/rdz
    xl=lerp(xl,vn.x-56,prc)
    xr=lerp(xr,vn.x+56,prc)
    iy=lerp(v.y,vn.y,prc)
   end
   -- current part
-  fct,cfx=scale/dz,cfx-v.fx
+  prc=(cam.z+7-vz)/rdz
+  fct=scale/dz--scale
+  cfx=cfx-v.fx
 
-  r={
-   x1=proj_fct_x(xl-cam.x,cfx),
-   x2=proj_fct_x(xr-cam.x,cfx),
-   y=proj_fct_y(iy-cam.y),
+  r.x1=proj_fct_x(xl-cam.x,cfx)
+  r.x2=proj_fct_x(xr-cam.x,cfx)
+  r.y=proj_fct_y(iy-cam.y)
 
-   xl1=proj_fct_x(xl-32-cam.x,cfx),
-   xr1=proj_fct_x(xr+32-cam.x,cfx),
-   y2=proj_fct_y(iy+16-cam.y),
-   xl2=proj_fct_x(xl-64-cam.x,cfx),
-   xr2=proj_fct_x(xr+64-cam.x,cfx),
-   xl3=proj_fct_x(xl-80-cam.x,cfx),
-   xr3=proj_fct_x(xr+80-cam.x,cfx),
-   y3=proj_fct_y(iy+48-cam.y),
-   y4=proj_fct_y(iy+128-cam.y),
-  }
+  r.xl1=proj_fct_x(xl-32-cam.x,cfx)
+  r.xr1=proj_fct_x(xr+32-cam.x,cfx)
+  r.y2=proj_fct_y(iy+16-cam.y)
+  r.xl2=proj_fct_x(xl-64-cam.x,cfx)
+  r.xr2=proj_fct_x(xr+64-cam.x,cfx)
+  r.xl3=proj_fct_x(xl-80-cam.x,cfx)
+  r.xr3=proj_fct_x(xr+80-cam.x,cfx)
+  r.y3=proj_fct_y(iy+48-cam.y)
+  r.y4=proj_fct_y(iy+128-cam.y)
+
   -- drawing road
   if rn~=nil then 
    --color fade (-2 for lights)
-   local tx,even,odd,flp=
-    (i-ird)/(nb_rb-2),
+   local tx=(i-ird)/(nb_rb-2)
+   local even,odd,flp=
     v.c,vn.c,nil
    
    if tx>=rd_grd3 then
---    even,odd=1,1
-      flp=0b1111111111111111.1
---      even,odd=0,0
+    even,odd=1,1
    elseif tx>=rd_grd2 then
---    flp=0xa5a5
-      flp=0b1010010110100101.1
+    flp=0xa5a5
    elseif tx>=rd_grd1 then
---    flp=0xa0a0
-      flp=0b1010000010100000.1
+    flp=0xa0a0
    end
    -- colors are the same
    if tx>=rd_grd1 
-     and tx<rd_grd3 
-     and v.c~=5 then
-    even,odd=odd,even
+    and tx<rd_grd3 then
+    if v.c~=5 then
+     even,odd=0x1d,0x15
+    else
+     even,odd=0x15,0x1d
+    end
    end
 
    if band(v.t,256)==256 then
@@ -893,16 +835,17 @@ function drawroad(cam,ird,p)
      odd,flp,cam,vz)
    end
    -- other ? (if possible)
+
    local lborx,lbory,
     rborx,rbory,lcol=
     xl-32,ylgt+16,xr+32,ylgt+16,
     peek_spr(0x0170,irdlast-i-1)
    if band(v.t,4)==4 then
---    if r.y>rn.y then
+    if r.y>rn.y then
      --main road
      otri(r.x1,r.y,r.x2,r.y,rn.x1,rn.y,even,flp)
      otri(rn.x1,rn.y,rn.x2,rn.y,r.x2,r.y,even,flp)
---    end
+    end
     -- tokens left1=right1
     -- but see perfs
     -- left 1
@@ -1002,7 +945,7 @@ function drawroad(cam,ird,p)
     add(pls,
      {np=pl[inp],key=ssp[pl[inp]].z})
    end
-   shellsort(pls)
+   ce_heap_sort(pls)
    for inp=1,#pls do
     pl[inp]=pls[#pls-inp+1].np
    end
@@ -1014,8 +957,8 @@ function drawroad(cam,ird,p)
    local shake=spd[np].z+spd[np].gz+spd[np].bz>=14
    if shake then
     ox,oy=cam.x,cam.y
-    cam.x+=rnd"2"-1
-    cam.y+=rnd"2"-1
+    cam.x+=rnd(2)-1
+    cam.y+=rnd(2)-1
    end
    -- shadow
    drawvoxel(zzz[np],sssp[np],cam,pcfx,ntrk)
@@ -1026,9 +969,9 @@ function drawroad(cam,ird,p)
    end
   end
   --particles
-  --local road_parts=v.parts
-  for inp=1,#v.parts do
-   part=v.parts[inp]
+  local road_parts=v.parts
+  for inp=1,#road_parts do
+   part=road_parts[inp]
    pcfx=(part.z-vz)/rdz*v.fx+cfx
    part.draw(part,cam,pcfx,ntrk,p)
   end
@@ -1070,7 +1013,7 @@ function drawthunder(x1,y1,x2,y2,zfct,col)
   line(x,y,xn,yn,col)
   x,y=xn,yn 
  end
- line(xn,yn,x2,y2)
+ line(xn,yn,x2,y2,col)
 end
 
 function isnotvisible(pos,cam,ntrk)
@@ -1079,7 +1022,7 @@ function isnotvisible(pos,cam,ntrk)
 end
 
 function brilar()
- return max(flr(rnd"8")-6,0)
+ return max(flr(rnd(8))-6,0)
 end
 
 function drawvoxel(zz,ssp,cam,
@@ -1095,7 +1038,7 @@ function drawvoxel(zz,ssp,cam,
 
  -- draw reverse
  for i=#zz,1,-1 do
-  r=zz[i]
+  r=zz[i]  
   fct=scale/(r.z+pre)--flatten
   vfct=2.5*fct--zoom model
   if r.c==10 or r.c==9 and r.pat==1 then
@@ -1111,8 +1054,7 @@ function drawvoxel(zz,ssp,cam,
      end
      larger=spd.prc<50 and 0 or larger
      -- trail
-     if (larger~=0 and ctrl.accel)
-       or ctrl.cdn_bst<-6 then
+     if larger~=0 and ctrl.accel then
       create_particles(
        p_trail,ssp,spd,r)
      end
@@ -1192,11 +1134,11 @@ function convert_xflat_to_x(pos,decx,ytmp,rot,spdp,shipp)
 end
 
 -- intro
-local nb_choice
+local nb_ship,nb_choice
 local intro_mnu={
  {name="player   ",values={1,2},maxval=2},
- {name="ai skill ",values={"no","easy","normal","hard"},maxval=4,val=3},
- {name="track    ",maxval=6},
+ {name="ai skill ",values={"no","easy","normal","hard"},maxval=4,val=2},
+ {name="track    ",maxval=3},
  {name="ship 1   ",maxval=#ship_info},
  {name="ship 2   ",maxval=#ship_info}
 }
@@ -1208,52 +1150,49 @@ function init_intro()
   {x=0,y=72,z=40},
   32,{x=0,y=0,z=0},0,
   {},{}
- music"0"
+ music(0)
 end
 
 function update_intro()
  --handle controls
- if btnp"2" then
+ if btnp(2) then
   nb_choice=max(1,nb_choice-1)
-  sfx"40"
- elseif btnp"3" then
+  sfx(40)
+ elseif btnp(3) then
   nb_choice=min(#intro_mnu,nb_choice+1)
-  sfx"40"
+  sfx(40)
  end
  local mnuitem=intro_mnu[nb_choice]
  if (mnuitem.val==nil) mnuitem.val=1
  --
- if btnp"0" then
+ if btnp(0) then
   mnuitem.val=max(1,mnuitem.val-1)
-  sfx"40"
- elseif btnp"1" then
+  sfx(40)
+ elseif btnp(1) then
   mnuitem.val=min(mnuitem.maxval,mnuitem.val+1)
-  sfx"40"
+  sfx(40)
  end
  local ship2=intro_mnu[5]
  if btnp(0,1) then
   ship2.val=max(1,ship2.val-1)
-  sfx"40"
+  sfx(40)
  elseif btnp(1,1) then
   ship2.val=min(ship2.maxval,ship2.val+1)
-  sfx"40"
+  sfx(40)
  end
  -- start game
- if offset>0 and btnp"4" then
-  sfx"41"
+ if offset>0 and btnp(4) then
+  sfx(41)
   nb_ai,ai_skill,num_trk=
-   0,intro_mnu[2].val,
-   intro_mnu[3].val-1
+   0,intro_mnu[2].val+1,
+   intro_mnu[3].val
   if ai_skill>1 then
    nb_ai=4-nb_player
-   nss[4]=3
-   nss[3]=2
-   if (nb_player<2) nss[2]=10
   end
   nb_player_and_ai=nb_player+nb_ai
   offset,ofsky,skyadr=
-   0,3+32*(num_trk%2),
-   0x0230+64*(num_trk%2)
+   0,3+32*((num_trk-1)%2),
+   0x0230+64*((num_trk-1)%2)
   skyc1,skyc2,skyc3,skyc4=
    peek_spr(skyadr,0),
    peek_spr(skyadr,1),
@@ -1282,7 +1221,7 @@ end
 function draw_intro()
  cls(0)
  offset+=1
- spr_grd(67,32,4,64,31,0x1b0,offset)
+ spr_grd(67,32,4,64,32,0x1b0,offset)
 
  --choice
  nb_player=intro_mnu[1].val
@@ -1310,18 +1249,12 @@ function draw_intro()
   end
   y+=6
  end
- spr(39,60,122,2,1)
- print("start ❎🅾️    yourykiki",
-  16,122,1)
+ spr(131,42,122,2,1)
+ print("yourykiki",53,122,12)
  if nb_choice==3 then
-  local itrk=intro_mnu[3].val-1
-  spr(204,16,72,4,4)
-  spr(131+2*itrk,24,80,2,2)
-  print("best race time",56,72,5)
-  print(formattime(
-          dget(itrk*4+
-             intro_mnu[2].val-1)),
-        64,78,5)
+  spr(140,48,72,4,4)
+  spr(134+2*(intro_mnu[3].val-1)
+   ,56,80,2,2)
  else
   -- ships
   for p=1,nb_player do
@@ -1341,78 +1274,125 @@ function draw_intro()
    end
   end
  end
--- print("cpu:"..stat(1),0,0,1)
 end
-
-function formattime(tm)
- return flr(tm/30/60)..":"
-  ..(flr(tm/30)%60).."."
-  ..flr(tm/30*10)%10
-end
-
---function resetscore()
--- for i=0,24 do
---  dset(i,21600)
--- end
---end
-
 -->8
---tris
-local cpy=0
+--fill tris
+local cpy,dec=0,16
 
--- based on p01
--- https://www.lexaloffle.com/bbs/?tid=31478
+-- based on
+-- https://www.lexaloffle.com/bbs/?tid=3804
+function otri(x1,y1,x2,y2,x3,y3,c,flp)
 
-function otri(x0,y0,x1,y1,x2,y2,colr,flp)
- color(colr)
- if (flp~=nil) fillp(flp)
- y0,y1,y2=
-  band(y0,0xffff),
+ y1,y2,y3=
   band(y1,0xffff),
-  band(y2,0xffff)
- if(y1<y0)x0,x1,y0,y1=x1,x0,y1,y0
- if(y2<y0)x0,x2,y0,y2=x2,x0,y2,y0
- if(y2<y1)x1,x2,y1,y2=x2,x1,y2,y1
- col=x0+(x2-x0)/(y2-y0)*(y1-y0)
- p01_trapeze_h(x0,x0,x1,col,y0,y1)
- p01_trapeze_h(x1,col,x2,x2,y1,y2)
+  band(y2,0xffff),
+  band(y3,0xffff)
+
+ if y2<y1 then
+  if y3<y2 then
+   y1,y3=y3,y1
+   x1,x3=x3,x1
+  else
+   y1,y2=y2,y1
+   x1,x2=x2,x1
+  end
+ else
+  if y3<y1 then
+   y1,y3=y3,y1
+   x1,x3=x3,x1
+  end
+ end
+ -- avoid div by 0
+ y1+=0.1
+ 
+ local miny=min(y2,y3)
+ local maxy=max(y2,y3)
+ local fx=x2
+ if y2<y3 then
+  fx=x3
+ end
+ local cl_y1=mid(cpy-1,y1,csy)--clampy(y1)
+ local cl_miny=mid(cpy-1,miny,csy)--clampy(miny)
+ local cl_maxy=mid(cpy-1,maxy,csy)--0clampy(maxy)
+ local steps=(x3-x1)/(y3-y1)
+ local stepe=(x2-x1)/(y2-y1)
+ local sx=steps*(cl_y1-y1)+x1
+ local ex=stepe*(cl_y1-y1)+x1
+ 
+ if (flp~=nil) fillp(flp)
+ for y=cl_y1,cl_miny do
+  rectfill(sx,y,ex,y,c)
+  sx=sx+steps
+  ex=ex+stepe
+ end
+
+ sx=steps*(miny-y1)+x1
+ ex=stepe*(miny-y1)+x1
+
+ local df=1/(maxy-miny)
+
+ local step2s=(fx-sx)*df
+ local step2e=(fx-ex)*df
+
+ local sx2=sx+step2s*(cl_miny-miny)
+ local ex2=ex+step2e*(cl_miny-miny)
+
+ for y=cl_miny,cl_maxy do
+  rectfill(sx2,y,ex2,y,c)
+  sx2+=step2s
+  ex2+=step2e
+ end
  fillp()
 end
 
-function p01_trapeze_h(l,r,lt,rt,y0,y1)
- lt,rt=(lt-l)/(y1-y0),(rt-r)/(y1-y0)
- if(y0<0)l,r,y0=l-y0*lt,r-y0*rt,0 
- y1=min(y1,csy)
- for y0=y0,y1 do
-  rectfill(l,y0,r,y0)
-  l+=lt
-  r+=rt
- end
-end
-
 -->8
---triplefox with ciura's sequence
+-- morgan3d heapsort
 --https://www.lexaloffle.com/bbs/?tid=2477
-shell_gaps={701,301,132,57,23,10,4,1} 
-function shellsort(a)
- for gap in all(shell_gaps) do
-  if gap<=#a then
-   for i=gap,#a do
-    local t=a[i]
-    local j=i
-    while j>gap and
-       a[j-gap].key>t.key do 
-     a[j]=a[j-gap]
-     j-=gap
-    end
-    a[j]=t
-   end
+
+function ce_heap_sort(data)
+ local n=#data
+
+ for i=flr(n/2)+1,1,-1 do
+  local parent,value,m=i,data[i],i+i
+  local key=value.key 
+
+  while m<=n do
+   if ((m<n) and (data[m+1].key>data[m].key)) m+=1
+   local mval=data[m]
+   if (key>mval.key) break
+   data[parent]=mval
+   parent=m
+   m+=m
   end
+  data[parent]=value
+ end 
+
+ for i=n,2,-1 do
+  local value = data[i]
+  data[i],data[1]=data[1],value
+
+  local parent,terminate,m=1,i-1,2
+  local key=value.key 
+
+  while m<=terminate do
+   local mval=data[m]
+   local mkey=mval.key
+   if (m<terminate) and (data[m+1].key>mkey) then
+    m+=1
+    mval=data[m]
+    mkey=mval.key
+   end
+   if (key>mkey) break
+   data[parent]=mval
+   parent=m
+   m+=m
+  end  
+
+  data[parent]=value
  end
 end
-
 -->8
--- math lerp
+-- math lerp...
 function lerp(v0,v1,prc)
  return (1-prc)*v0+prc*v1
 end
@@ -1457,8 +1437,8 @@ function calcrotmat(rot)
   zx=azx,zy=azy,zz=azz}
 end
 
-function recover_cdn(ssp)
- return 0.3/(6-flr(ssp.hp/25.0001))
+function recover_cdn(ship)
+ return 0.3/(6-flr(ship.hp/25.0001))
 end
 -->8
 --particles
@@ -1486,7 +1466,6 @@ function update_particles(part)
     add(road[nird+1].parts,p)
    end
   end
-  p.frm-=1
  end
 end
 function draw_part_line(
@@ -1498,9 +1477,8 @@ function draw_part_line(
   ntrk-cam.z,
   cx+cfx,cy,
   part.z+part.spz
- local fct1,fct2=
-   scale/(part.z+pre),
-   scale/(wz2+pre)
+ local fct1=scale/(part.z+pre)
+ local fct2=scale/(wz2+pre)
  local pos1,pos2=
   {x=part.x,y=part.y,z=part.z},
   {x=part.x+part.spx,
@@ -1521,23 +1499,27 @@ function init_draw_voxel(pos,cam,ntrk,cfx)
 end
 -- sparks 
 function create_spark(pos,sp)
-	local ang,speed=
-	 rnd(),.1+rnd"1"
+	local ang=rnd()
+	local speed=.1+rnd(1)
 	return {
 		x=pos.x,y=pos.y,z=pos.z,
 		spx=sin(ang)*speed,
 		spy=cos(ang)*speed,
 		spz=sp.z,
-		frm=10+flr(rnd"20"),
+		frm=10+flr(rnd(20)),
 		draw=draw_spark
 	}
 end
 function update_spark(part)
+	if part.frm<=0 then
+		return false
+	end
 	part.x+=part.spx
 	part.y+=part.spy
 	part.z+=part.spz
+	part.frm-=1
 	part.spy-=0.1
-	return part.frm>0
+	return true
 end
 function draw_spark(part,cam,cfx,ntrk)
  draw_part_line(part,cam,cfx,ntrk,
@@ -1550,7 +1532,7 @@ p_spark={
 	parts={},
 	nb=2
 }
--- trails
+-- engine trails
 function create_trail(pos,spd,obj)
 	return {
 		x=pos.x,y=pos.y,z=pos.z,
@@ -1566,6 +1548,7 @@ function update_trail(part)
 	end
 	part.spz*=0.96
 	part.z+=part.spz
+	part.frm-=1
 	return true
 end
 function draw_trail(part,cam,cfx,ntrk)
@@ -1596,13 +1579,13 @@ p_trail={
 -- boost 
 function create_boost(pos,sp,obj)
  local col=
-  peek_spr(0x0130,flr(rnd"3"))
+  peek_spr(0x0130,flr(rnd(3)))
  return {
-  x=rnd"256"-128,
-  y=pos.y+rnd"56",
-  z=pos.z+64+rnd"384",
+  x=rnd(256)-128,
+  y=pos.y+rnd(56),
+  z=pos.z+64+rnd(384),
   spx=0,spy=0,spz=-sp.z*0.75,
-  frm=32+flr(rnd"32"),
+  frm=32+flr(rnd(32)),
   draw=draw_boost,
   col=col,
   player=obj
@@ -1613,7 +1596,8 @@ function update_boost(part)
   return false
  end
  part.z+=part.spz
- part.spz*=0.9
+ part.spz*=0.95
+ part.frm-=1
  return true
 end
 function draw_boost(part,cam,cfx,ntrk,p)
@@ -1638,9 +1622,9 @@ end
 
 function spr_grd(nbs,x,y,w,h,col_addr,offset)
  local sprx,spry,scol=
-  nbs%16 *8,flr(nbs/16)*8,0
+  (nbs%16)*8,flr(nbs/16)*8,0
  for i=0,w do
-  for j=0,h do
+  for j=0,h-1 do
    scol=sget(sprx+i,spry+j)
    if scol==3 then
     pset(x+i,y+j,
@@ -1654,9 +1638,8 @@ function spr_grd(nbs,x,y,w,h,col_addr,offset)
 end
 
 function drawbar(yp,val,vmax,col)
- 	rectfill(4,yp-1,
- 	 lerp(4,36,abs(val/vmax)),
- 	 yp,col)
+  local hx=lerp(4,36,abs(val/vmax))
+ 	rectfill(4,yp-1,hx,yp,col)
 end
 
 function proj_fct_x(worldx,cfx)
@@ -1674,23 +1657,23 @@ function start_scene(scene)
 end
 
 function loadship(p,nbss)
- ss[p],sss[p],xflat={},{},
-  (p%2)*32-16
- loadss(nbss,ss[p],sss[p])
- ssp[p],rot[p],spd[p],
- ctrl[p],ird[p]=
-  {x=0,y=8,z=72+24*p,
-   xflat=xflat,yflat=9,
-   rlap=0,rank=0,update=update_cntdn,
-   frm=0},
-  {x=0,y=0,z=1},
-  {x=0,z=0,gx=0,gz=0,prc=0,cdn=0,bz=0},
-  {cdn_bst=0,can_bst=true},1
- sssp[p]={x=ssp[p].x,y=0,z=56}
- ship[p]=ship_info[nbss+1]
- ssp[p].hp=100
- ssp[p].xmin,ssp[p].xmax=
-  xflat-5,xflat+5   
+  ss[p],sss[p],xflat={},{},
+   (p%2)*32-16
+  loadss(nbss,ss[p],sss[p])
+  ssp[p],rot[p],spd[p],
+  ctrl[p],ird[p]=
+   {x=0,y=8,z=72+16*p,
+    xflat=xflat,yflat=9,
+    lap=0,rank=0,update=update_cntdn},
+   {x=0,y=0,z=1},
+   {x=0,z=0,gx=0,gz=0,prc=0,cdn=0,bz=0},
+   {cdn_bst=0,can_bst=true},1
+  sssp[p]={x=ssp[p].x,y=0,z=56}
+  ship[p]=ship_info[nbss+1]
+  ship[p].hp=100
+  ssp[p].xmin,ssp[p].xmax=
+   xflat-5,xflat+5
+   
 end
 
  
@@ -1717,7 +1700,7 @@ function road_part_collision(
  end
  return borx
 end
--- test coll 2
+-- test collision 2
 function road_part2_collision(
   b2,b3,prc,flg,borx)
  if band(v.t,flg)==flg then
@@ -1731,29 +1714,42 @@ function road_part2_collision(
  return borx
 end
 
-function parse_trk()
- local trk={}
- byte_offset=num_trk*256
- for i=1,read_byte() do
-  trk[i]={curv=read_byte(),
-   len=read_byte(),
-   frc=read_byte(),
-   hgt=read_byte(),
-   hln=read_byte()}
+function parse_trk(trk_str)
+ local trk,seg,tmp={},{},nil
+ while #trk_str>0 do
+  i=charidx(trk_str,",","|")
+  sep,eqidx=
+   sub(trk_str,i,i),
+   charidx(trk_str,"=")
+   
+  seg[sub(trk_str,1,eqidx-1)]=
+   tonum(
+    sub(trk_str,eqidx+1,i-1))
+
+  of=1
+  if sep=="," then
+   add(trk,seg)
+   seg={}
+   of=2
+  end
+  trk_str=sub(trk_str,i+of)
  end
  return trk
 end
 
-function read_byte()
- local val=peek(0x2000+byte_offset)-128
- byte_offset += 1
- if (val==-128) return nil
- return val
+function charidx(str,sep1,sep2)
+ for i=1,#str do
+  local tmp=sub(str,i,i)
+  if tmp==sep1 or tmp==sep2 then
+   return i
+  end
+ end
+ return 0
 end
 
 function is_collide(sspp,ssppn,
  shipp,shippn,dz)
- --/8 /4 scale
+ --/8 /4 for scale
  return
   abs(sspp.xflat/8
    -ssppn.xflat/8)
@@ -1764,17 +1760,140 @@ function is_collide(sspp,ssppn,
 end
 
 function snd_engine(p,spd)
- sfx(47+p,p*2+1,mid(0,flr(spd.z),11)*2,2)
+ sfx(46+p,p,mid(0,flr(spd.z),11)*2,2)
 end
 
-function getdamage()
- return max(2,ai_skill)
-end
+-->8
+trk_str=
+{[[
+curv=0,
+curv=0|hgt=-64,
+curv=-2|len=4,
+curv=-4|len=4,
+curv=-8|len=8,
+curv=-4|len=4,
+curv=-2|len=4,
+curv=0|hgt=64|hln=2,
+curv=-2|len=4,
+curv=-4|len=4,
+curv=-8|len=8,
+curv=-4|len=4,
+curv=-2|len=4,
+curv=0|frc=31|len=32|hgt=-48,
+curv=0|hgt=-64|hln=2|len=8,
+curv=-2|len=4,
+curv=-4|len=4,
+curv=-8|len=24,
+curv=-4|len=4,
+curv=-2|len=4,
+curv=0,
+curv=2|len=4,
+curv=4|len=4,
+curv=8|len=8,
+curv=4|len=4,
+curv=2|len=4,
+curv=-2|len=4,
+curv=-4|len=4,
+curv=-8|len=8,
+curv=-4|len=4,
+curv=-2|len=4,
+curv=0|len=4,
+]],
+[[
+curv=0,
+curv=2|len=1|frc=4,
+curv=4|len=1|frc=4,
+curv=8|len=2|frc=4,
+curv=4|len=1|frc=4,
+curv=2|len=1|frc=4,
+curv=-2|len=1|frc=4,
+curv=-4|len=1|frc=4,
+curv=-8|len=2|frc=4,
+curv=-4|len=1|frc=4,
+curv=-2|len=1|frc=4,
+curv=-2|len=4,
+curv=-4|len=4,
+curv=-8|len=8,
+curv=-4|len=4,
+curv=-2|len=4,
+curv=0|hgt=80,
+curv=-2|len=4,
+curv=-4|len=4,
+curv=-6|len=24,
+curv=-4|len=4,
+curv=-2|len=4,
+curv=0|hgt=-64|hln=2,
+curv=2|len=4|frc=14,
+curv=4|len=4|frc=31,
+curv=8|len=16|frc=31,
+curv=4|len=4|frc=31,
+curv=2|len=4|frc=31,
+curv=-2|len=4|frc=31,
+curv=-4|len=4|frc=31,
+curv=-8|len=16|frc=31,
+curv=-4|len=4|frc=14,
+curv=-2|len=4,
+curv=0|hgt=64|hln=2|len=8,
+curv=-2|len=4,
+curv=-4|len=4,
+curv=-6|len=8,
+curv=-4|len=4,
+curv=-2|len=4,
+curv=0|len=4,
+]],
+[[
+curv=0,
+curv=2|len=2,
+curv=4|len=2,
+curv=8|len=4,
+curv=4|len=2,
+curv=2|len=2|frc=14,
+curv=-2|len=2|frc=14,
+curv=-4|len=2,
+curv=-8|len=4,
+curv=-4|len=2,
+curv=-2|len=2|frc=14,
+curv=0|len=4|frc=14,
+curv=0|len=4,
+curv=0|len=4|frc=14|hgt=-32|hln=2,
+curv=0|len=4,
+curv=0|len=4|frc=14|hgt=32|hln=2,
+curv=0|len=4,
+curv=2|len=2,
+curv=4|len=4,
+curv=10|len=24,
+curv=4|len=4,
+curv=2|len=2,
+curv=0|len=4|frc=12,
+curv=0|len=4|frc=12|hgt=32|hln=2,
+curv=0|len=8|frc=4,
+curv=0|len=4|frc=6|hgt=-32|hln=2,
+curv=0|len=4|frc=6,
+curv=-2|len=2,
+curv=-4|len=4,
+curv=-10|len=16|hgt=64|hln=2,
+curv=-4|len=4,
+curv=-2|len=2,
+curv=2|len=2,
+curv=4|len=4,
+curv=10|len=24|hgt=-64|hln=2,
+curv=4|len=4,
+curv=2|len=2,
+curv=0,
+curv=2|len=2,
+curv=4|len=4,
+curv=8|len=4,
+curv=4|len=4,
+curv=2|len=2,
+curv=0|len=4,
+]]
+}
+
 __gfx__
 000880000000000000000000000000000000000000500000000000006505505503c3333333333c3055055056000000002229999999aaaaa77777777777777700
 002882000000000000000000111111111111111111551111111111116050505503133366663331305505050600a0b0b099aa769aa77000000000000000000000
 00088000000000000000000000500000000000000055500000000000650550503133333333333313050550560080a0c09aa7c6ccccc000000000000000000000
-00088000000770000000000015511111115111111151555111111111655505503e333000000333e305505556005080d029aa7700000000000000000000000000
+00088000000770000000000015511111115111111151555111111111655505503e333000000333e305505556005080d0129a7700000000000000000000000000
 200880020007700000077000115111111151511111115a5111111111605505cdde000aaaaaa000eddc50550600000000c7600000000000000000000000000000
 2228822280088008000880005551111115555111111555511111111165011c00009a222aa222a90000c110560080a0b0499aaaaaaaaaaaaaaaaaaaaa00000000
 2008800280088008000880005552222222555222225555522222222265505550309a65aaaa56a90305550556006090c0128e9999aaaaaaa77777766666ccd100
@@ -1787,12 +1906,12 @@ a000000a00000000000000005551111151595111115555511111155565550550309aaaaaaaaaa903
 30000003b000000b00000000555e555e55aa5e555e55555e555ee55565555000049990f99f099940000555560000000000000000000000000000000000000000
 30000003b000000b000000005a5e595e55555555ee59955e555ee555600000555000000ff0000005550000060000000000000000000000000000000000000000
 a000000a0000000000000000555e555e555555555e55555e55555555655555555550000000500555555555560000000000000000000000000000000000000000
-000000000000000000000000cccccccccccccccccccccccccccccccc000000cc0c00000000000000000000000000000000000000000000000000000000000000
-100000010000000000000000ffffffffffffffffffffffffffffffffcc000cccc000000000000000000000000000000000000000000666666666d00000000000
-100000010000000000000000cccccccccccccccccccccccccccccccc0cc11ccccc00000000000000000000000000000000000000766111111111166d00000000
-100cc0010007700000000000ccccc6776cccccccccccccccc6776ccccccccccc000000000000000000000000000000000000007611111111111111116d000000
-110cc011c007700c00077000cccc777777cccccccccccccc677776cc0cccccc100000000000000000000000000000000000076111111111111111111116d0000
-110cc011c00cc00c000cc000ccc67777776ccccccccccc67777777cc01cccc10000000000000000000000000000000000007111111111111111111111111d000
+000000000000000000000000cccccccccccccccccccccccccccccccc000000000000000000000000000000000000000000000000000000000000000000000000
+100000010000000000000000ffffffffffffffffffffffffffffffff000000000000000000000000000000000000000000000000000666666666d00000000000
+100000010000000000000000cccccccccccccccccccccccccccccccc000000000000000000000000000000000000000000000000766111111111166d00000000
+100cc0010007700000000000ccccc6776cccccccccccccccc6776ccc00000000000000000000000000000000000000000000007611111111111111116d000000
+110cc011c007700c00077000cccc777777cccccccccccccc677776cc0000000000000000000000000000000000000000000076111111111111111111116d0000
+110cc011c00cc00c000cc000ccc67777776ccccccccccc67777777cc00000000000000000000000000000000000000000007111111111111111111111111d000
 11111111cc0cc0cc000cc000ff77777777776ffffff77777777777ff000000000000000000000000000000000000000000711111111111111111111111111d00
 000000000a0000a000000000c677777777777776cccc77777777777c0000000000000000000000000000000000000000071111111111111111111111111111d0
 00022000000000000000000077777777777777777ffff677777777ff0000000000000000000000000000000000000000071111111111111111111111111111d0
@@ -1803,22 +1922,22 @@ a000000a0000000000000000555e555e555555555e55555e55555555655555555550000000500555
 0022220000eeee00000ee000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0000000000000000000000000000000000000000771111111111111111111111111111d1
 022002200eeeeee0000ee000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000000000000000000000000000000000000000077711111111111111111111111111d11
 0a0000a00000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa000000000000000000000000000000000000000077711111111111111111111111111d51
-0400004000000000000000005550555555505555555555555550555555555555555555555555555555505555000000007777111111111111111111111111d111
-04000040000000000000000000000000000000000000000000000000000000000000000000000000000000000000000077766611111111111111111111555151
-04400440090000900000000000000000000000000000000000000000000000000000000000000000000000000000000007767666611111111111111555555110
-44000044090000900900077000000000033333300333333003300033033333300333333003300000000000000000000000666666666611111111dd5d55555100
-44044044099009900900099000000000003333330033333300330003303333330033333300330000000000000000000000067666666ddddddddddd5555551000
-04455440099999900990099000000000000330033003300330033003300033000003300330033000000000000000000000006666666d6ddddddddd5d55550000
-05055050050550500000000000000000000330033003300330033003300033000003300330033000000000000000000000000066666ddddddddddd5555000000
-000000000a0000a0000000000000000000033333000333330003300330003300000333330003300000000000000000000000000006dd6dddddddd55000000000
+0000000000600600000000005550555555505555555555555550555555555555555555555555555555505555000000007777111111111111111111111111d111
+00000000006006000000000000000000000000000000000000000000000000000000000000000000000000000000000077766611111111111111111111555151
+00600600056006500000000000000000000000000000000000000000000000000000000000000000000000000000000007767666611111111111111555555110
+06666660665665660000007700000000033333300333333003300033033333300333333003300000000000000000000000666666666611111111dd5d55555100
+06000060666556660000006600000000003333330033333300330003303333330033333300330000000000000000000000067666666ddddddddddd5555551000
+06000060065665600000000000000000000330033003300330033003300033000003300330033000000000000000000000006666666d6ddddddddd5d55550000
+00555500056666500000000000000000000330033003300330033003300033000003300330033000000000000000000000000066666ddddddddddd5555000000
+0000000000a00a00000000000000000000033333000333330003300330003300000333330003300000000000000000000000000006dd6dddddddd55000000000
 000000000000000000000000000000000033333000333330003300330003300000333333003300000000000000000000000000000000dddddddd000000000000
-0000000000c00c000000000000000000003333330033333000330033000330000033003300330000000000000040040000000000000000000000000000000000
-0000000000c00c000000000000000000003300330033003300330033000330000033003300330000000000000404040000000000000000000000000000000000
-c000000c0c9cc9c0c007700c00000000003300330033003300330033000330000033003300330000000000000044040000000000000000000000000000000000
-c011110c009cc900c09cc90c00000000033003330330003303300333003300000330033003300000000000000004040000000000000000000000000000000000
-c110011c0c9cc9c0c09cc90c00000000033333300330000333333330003300000330033003333330000000000040040000000000000000000000000000000000
-c000000c009cc900c000000c00000000033333000330000333333300003300000330033003333333000000000000000000000000000000000000000000000000
-0000000000a00a000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00066000000000000000000000000000003333330033333000330033000330000033003300330000000000000040040000000000000000000000000000000000
+00066000000770000000000000000000003300330033003300330033000330000033003300330000000000000404040000000000000000000000000000000000
+60066006000770006007700600000000003300330033003300330033000330000033003300330000000000000044040000000000000000000000000000000000
+60066006000770006007700600000000033003330330003303300333003300000330033003300000000000000004040000000000000000000000000000000000
+60066006000660006066660600000000033333300330000333333330003300000330033003333330000000000040040000000000000000000000000000000000
+60566506066666606056650600000000033333000330000333333300003300000330033003333333000000000000000000000000000000000000000000000000
+6000000600a00a006000000600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00300300000000000000000000000000000000000000000033333300333333003333333003333330000000000000000000000000000000000000000000000000
 033003300b0000b00000000000000000077007007007000003333330033333300333333300333333000000000333330000033300033333000033330000033000
 033003300b0000b00000000000000000070700070070700000330033003300330033000000033000000000000333333000003310003333300333333003333100
@@ -1835,224 +1954,184 @@ c000000c009cc900c000000c00000000033333000330000333333300003300000330033003333333
 00000000002882000888888000000000000000000000000000000000000000000000000000000000000000000333333100113311033333310333333000033100
 00000000000000000a0880a000000000000000000000000000000000000000000000000000000000000000000033331100003310003333110333333100033100
 00000000000000000000000055505555555055555555555555505555555555555555555555555555555055550001111000000110000111100011111100001100
-00000000000000000000000006660660060600600666066006060660066606600606066006660660060600600666066006060666066606600606066000000000
-00000000000990000000000000600606066006600060060606600006006006060660006600600606066006000060060606600600006006060660060000000000
-00444400000990000000000000600660066600600060066006660060006006600666000600600660066606660060066006660066006006600666066600000000
-00000000000990000000000000600606060606660060060606060666006006060606066600600606060600600060060606060666006006060606066600000000
-04400440009999000007700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000990000007700000666666666666000000000000066600000000066000000000006666666600000000000000000000000000000000000000000000
-44400444009999000009900006000000000000600000000000600060000000600600000000060000000060000000000066666600000000000000000000000000
-0a0000a0000000000009900060000000000000060000000006000006000000600600000000600000000006000000000600000060006600006675600000000000
-00000000000000000000000060000000000000060000000006000006000000600600000000600006660006000000000600000060060060060000060000000000
-00066000000000000000000006000000000000060066000006000006000000600600066000600060006006000066000066600070060060060000006000000000
-00066000000000000000000000666600000000060600600006000006000666000600600600600060006006000600600000060050060006600000006000000000
-60066006000770000000000000000060000000066000060060000006006000000600600600060000006006000600066666600060060000000000006000000000
-60066006000660000000000000000006000000066000006600000006005000000066000600006675660006000600000000000060006600000000006000000000
-65566556600660060000000000000006000000060600000000600060007000000000000600000000000006000600000000000060000066660000060000000000
-0a0660a0600000060000000000000000600000600066675606066600006000000000006000000060000060000066666660666600000000006666600000000000
-00000000000000000000000000000000067566000000000060000000000666666666660000000006666600000000000006000000000000000000000000000000
-00600600006006000000000003c3333333333c3003c3333333333c3003c3333333333c3003c3333333333c300010000000000000000000000000000000000000
-00600600006006000000000003133366663331300313336666333130031333666633313003133366663331300050000060666060000000000000000000000000
-066006600660065000000000313333333333331331333333333333133133333333333313313333333333331300d0000060006006000000000000000000000000
-0666666006666560000000773e333000000333e33e333000000333e33e333000000333e33e333000000333e300c0000060060060000000000000000000000000
-660000666665566600000066de000aaaaaa000edde000a9aaaa000edde000a9aaaa000edde000a9aaaa000ed0000000060060600000000000000000000000000
-660000666656656600000060009a22aaaa22a900009a22a9aa22a900009a22a9aa22a900009a2229a222a9000040000060060666000000000000000000000000
-005555000566665000000000309a652aa256a903309a652aa256a903309a652a9256a903309a66afaa66a9030040000000000000000000000000000000000000
-0000000000a00a0000000000309aaaaaaaaaa903309a8aaaaaa8a903309a8a9aaaa8a903309a8affafa8f9030090000000000000000000000000000000000000
-0000000000000000000000003309aaff9faa90333308aaff9fa8903333098aff9fa8903383098aff9ff8f0880090000000000000000000000000000000000000
-00066000000000000000000033300fff9ff0033333300fff9ff0033333308ff44f80033338808ff44f80883300a0000000000000000000006066606000000000
-000660000007700000000000333300f44f003333333300f44f003333333300f8ff003333333800f77800383300a0000000000000000000006060660600000000
-600660060007700060077006443330ffff033344443330f8ff033344443330877f033344448330855f0333840060000000000000000000006066660600000000
-60066006000770006007700644499077770994444449907778099444444990855f099444484890855f0994840060000000000000000000006000660600000000
-600660060006600060666606049990f77f099940049990f778099940049990f588099940089898f5880999400070000000000000000000006066006000000000
-6056650606666660605665065000000ff00000055000000990000005500000077800000550000805580000050070000000000000000000000000000000000000
-60a00a060000000060a00a0655500000005005555550050000500555555005000050055555508507708005550000000000000000000000000000000000000000
+000000000000000000000000000000cc0c0000001000000006660660060600600666066006060660066606600606066000000000000000000000000000000000
+000000000009900000000000cc000cccc00000005000000000600606066006600060060606600006006006060660006609999999999999999999999999999990
+0044440000099000000000000cc11ccccc000000d000000000600660066600600060066006660060006006600666000609aa0000aaaa0000aaaa0000aaaa0090
+000000000009900000000000cccccccc00000000c000000000600606060606660060060606060666006006060606066609a0000aaaa0000aaaa0000aaaa00090
+0440044000999900000770000cccccc10000000000000000000000000000000000000000000000000000000000000000090000aaaa0000aaaa0000aaaa000090
+00000000000990000007700001cccc10000000004000000000666666666666000000000000066600000000066000000009000aaaa0000aaaa0000aaaa0000a90
+4440044400999900000990000000000000000000400000000600000000000060000000000060006000000060060000000900aa9999999999999999999900aa90
+0a0000a00000000000099000000000000000000090000000600000000000000600000000060000060000006006000000090aaa900000000000000000090aaa90
+00000000000000000000000000000000000000009000000060000000000000060000000006000006000000600600000009aaaa90000000000000000009aaaa90
+0006600000000000000000000000000000000000a000000006000000000000060066000006000006000000600600066009aaa090000000000000000009aaa090
+0006600000000000000000000000000000000000a000000000666600000000060600600006000006000666000600600609aa0090000000000000000009aa0090
+60066006000770000000000000000000000000006000000000000060000000066000060060000006006000000600600609a00090000000000000000009a00090
+60066006000660000000000000000000000000006000000000000006000000066000006600000006005000000066000609000090000000000000000009000090
+65566556600660060000000000000000000000007000000000000006000000060600000000600060007000000000000609000a90000000000000000009000a90
+0a0660a060000006000000000000000000000000700000000000000060000060006667560606660000600000000000600900aa9000000000000000000900aa90
+000000000000000000000000000000000000000000000000000000000675660000000000600000000006666666666600090aaa900000000000000000090aaa90
+00600600006006000000000003c3333333333c3003c3333333333c3003c3333333333c3000000000000000000000000009aaaa90000000000000000009aaaa90
+00600600006006000000000003133366663331300313336666333130031333666633313000000000000000000000000009aaa090000000000000000009aaa090
+06600660066006500000000031333333333333133133333333333313313333333333331300000000000000000000000009aa0090000000000000000009aa0090
+0666666006666560000000773e333000000333e33e333000000333e33e333000000333e300000000000000000000000009a00090000000000000000009a00090
+660000666665566600000066de000aaaaaa000edde000aaaaaa000edde000aaaaaa000ed00000000000000000000000009000090000000000000000009000090
+660000666656656600000060009a22aaaa22a900009a22aaaa22a900009a22aaaa22a90000000000000000000000000009000a90000000000000000009000a90
+005555000566665000000000309a652aa256a903309a652aa256a903309a652aa256a9030000000000000000000000000900aa9000000000000000000900aa90
+0000000000a00a0000000000309aaaaaaaaaa903309a8aaaaaa8a903309a8aaaaaa8a903000000000000000000000000090aaa900000000000000000090aaa90
+0000000000000000000000003309aaff9faa90333308aaff9fa8903333098aff9fa8903300000000000000000000000009aaaa90000000000000000009aaaa90
+00066000000000000000000033300fff9ff0033333300fff9ff0033333308ff44f80033300000000000000000000000009aaa099999999999999999999aaa090
+000660000007700000000000333300f44f003333333300f44f003333333300f8ff00333300000000000000000000000009aa0000aaaa0000aaaa0000aaaa0090
+600660060007700060077006443330ffff033344443330f8ff033344443330877f03334400000000000000000000000009a0000aaaa0000aaaa0000aaaa00090
+60066006000770006007700644499077770994444449907778099444444990855f099444000000000000000000000000090000aaaa0000aaaa0000aaaa000090
+600660060006600060666606049990f77f099940049990f778099940049990f58809994000000000000000000000000009000aaaa0000aaaa0000aaaa0000a90
+6056650606666660605665065000000ff00000055000000990000005500000077800000500000000000000000000000009999999999999999999999999999990
+60a00a060000000060a00a0655500000005005555550050000500555555005000050055500000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00066000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000009999999999999999999999999999990
-00066000000770000000000000003300033003300033000330000000000000000000000000000000000000000000000009aa0000aaaa0000aaaa0000aaaa0090
-60066006000770006007700600000330003300330003300033000000000000000000000000000000000000000000000009a0000aaaa0000aaaa0000aaaa00090
-600660060007700060077006000000330003300330003300033000000000000000000000000000000000000000000000090000aaaa0000aaaa0000aaaa000090
-60066006000660006066660600000033100331033100331003310000000000000000000000000000000000000000000009000aaaa0000aaaa0000aaaa0000a90
-6056650606666660605665060000003310033103310033100331000000000000000000000000000000000000000000000900aa9999999999999999999900aa90
-60a00a060000000060a00a06000003311033113311033130331100000000000000000000000000000000000000000000090aaa900000000000000000090aaa90
-00000000000000000000000000000331303310331003313133100000000000000000000000000000000000000000000009aaaa90000000000000000009aaaa90
-00000000000000000000000000000331313310331003313133100000000000000000000000000000000000000000000009aaa090000000000000000009aaa090
-00000000600000060007700000000331313310331003313133100000000000000000000000000000000000000500505009aa0090000000000000000009aa0090
-50066005606776060007700000003313133113311033110331100000000000000000000000000000000000005050550509a00090000000000000000009a00090
-60066006566666650007700000003333333103310033100331000000000000000000000000000000000000000050505009000090000000000000000009000090
-50066005606666060006600000000331331103310033100331000000000000000000000000000000000000000500550509000a90000000000000000009000a90
-0000000060800806066666600000001101100011000110001100000000000000000000000000000000000000555050500900aa9000000000000000000900aa90
-000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000090aaa900000000000000000090aaa90
-00600600006006000000000000000000000000000000000000000000000000000000000000000000000000000000000009aaaa90000000000000000009aaaa90
-00600600006006000000000000000000000000000000000000000000000000000000000000000000000000000000000009aaa090000000000000000009aaa090
-06600660066006500000000033000000333333003333330033333300000000000000000000000000000000000000000009aa0090000000000000000009aa0090
-06666660066665600000007703300000033333300333333003333330000000000000000000000000000000000000000009a00090000000000000000009a00090
-66000066666556660000006600330000003311330033111100331111000000000000000000000000000000000000000009000090000000000000000009000090
-66000066665665660000006000331000003310331331100000331000000000000000000000000000000000000000000009000a90000000000000000009000a90
-0055550005666650000000000033100000331033133100000033100000000000000000000000000000000000000000000900aa9000000000000000000900aa90
-0000000000a00a0000000000033110000331033113333300033330000000000000000000000000000000000000000000090aaa900000000000000000090aaa90
-00000000000000000000000003310000033103310033333003333300000000000000000000000000000000000000000009aaaa90000000000000000009aaaa90
-00000000000000000000000003310000033103310001133103311110000000000000000000000000000000000000000009aaa099999999999999999999aaa090
-00000000000000000000000003310000033103310000033103310000000000000000000000000000000000000000000009aa0000aaaa0000aaaa0000aaaa0090
-00000000000000000000000033110000331133310000333133310000000000000000000000000000000000000000000009a0000aaaa0000aaaa0000aaaa00090
-000000000000000000000000333333003333331133333311333330000000000000000000000000000000000000000000090000aaaa0000aaaa0000aaaa000090
-00000000000000000000000033333330033331100333311033333300000000000000000000000000000000000000000009000aaaa0000aaaa0000aaaa0000a90
-00000000000000000000000001111111001111000011110001111110000000000000000000000000000000000000000009999999999999999999999999999990
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000600000060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+50066005606776065006600500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+60066006566666656006600600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+50066005606666065006600500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000608008060000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000050050500000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000505055050000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000005050500000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000050055050000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000555050500000000000000000000000000000000000000000
 __label__
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555055555550555555555555555055555555555555555555555555555550555500000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000006666cc00128e9900aa000aa07777760066ccd1008e000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000666ccd0028e99900aa000a70777766006ccd1100e900000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000006600d1008e009900aa00a70007700000cc001200990000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000006c001100e9009a00aa00770007600000cd002800990000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000006ccd1000e9999000aa00770007600000cd112000990000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000066ccd0008e999000aa00a70007700000ccd112009900000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000006ccd1100e9999000aa00770007600000cd0028009900000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000006c001100e9009a00aa00770007600000cd0028009900000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000006c001100e9009a00aa00770007600000cd0028009900000000000000000000000000000000000000000000
-000000000000000000000000000000000000000006c001120e9000aa0aa00777007600000cd00280099000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000006ccd1100e90000aaaaaa770007600000cd002800999aaa00000000000000000000000000000000000000000
-000000000000000000000000000000000000000006ccd1000e90000aaaaaa700007600000cd002800999aaaa0000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000aaaa770077666600cd1128e0099aaaa00000000000000000000000000000000000000000
-000000000000000000000000000000000000000007700700700700000aaa7770076666600d1128e9009aaaaa0000000000000000000000000000000000000000
-0000000000000000000000000000000000000000070700070070700000a70077006600cc00120000000aa0000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000077007070070700000a70077006600cc00120000000aa0000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000070007007007000000a77770006666c000120000000aa0000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000000000a77770006666cc00120000000aaaa000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000000000a77770006600cc00120000000aaaaa00000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000000000a70077006600cc00120000000aa00000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000008000000000770077006600cd00280000000aa00000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000097f0000000a70007706600cc00120000000aaa00000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000a777e000000a70000766600cc00128e99000aaaaa000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000b7d0000000770000666600cd0028e999900aaaaa700000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000c00000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000555055555550555555555555555055555555555555555555555555555550555500000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000888880000000000000000000000008880800088808080888088800000000000008800000000000000000000000008888800000000000000
-00000000000000008880088000000000000000000000008080800080808080800080800000000000000800000000000000000000000088008880000000000000
-00000000000000008800088000000000000000000000008880800088808880880088000000000000000800000000000000000000000088000880000000000000
-00000000000000008880088000000000000000000000008000800080800080800080800000000000000800000000000000000000000088008880000000000000
-00000000000000000888880000000000000000000000008000888080808880888080800000000000008880000000000000000000000008888800000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000007770777000000770707077707000700000007700077077707770777070000000000000000000000000
-00000000000000000000000000000000000000000000007070070000007000707007007000700000007070707070707770707070000000000000000000000000
-00000000000000000000000000000000000000000000007770070000007770770007007000700000007070707077007070777070000000000000000000000000
-00000000000000000000000000000000000000000000007070070000000070707007007000700000007070707070707070707070000000000000000000000000
-00000000000000000000000000000000000000000000007070777000007700707077707770777000007070770070707070707077700000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000007770777077700770707000000000000000007700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000700707070707000707000000000000000000700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000700770077707000770000000000000000000700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000700707070707000707000000000000000000700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000700707070700770707000000000000000007770000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000770707077707770000077000000000000007700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000007000707007007070000007000000000000000700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000007770777007007770000007000000000000000700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000070707007007000000007000000000000000700000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000007700707077707000000077700000000000007770000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000555050505550555000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000505050505050505000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000555050505500555000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000505050505050505000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000505005505050505000000077777770000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000777777700000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000007777000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000007770000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000700000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000007000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000700000000555000005050500000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000007000000000555005005050500000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000007000000000505000005550555000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000070000000000505005000050505000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000700000000000505000000050555000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000888880000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000008866008888880000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000088866607777880000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000088866607777880000888000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000088866607777880000888600000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000022222227777880000888660000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000222222277777822000882660000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000222611277777822222222660000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000007610001188777822222226600000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000076110000018888800111222d000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000007111100000888888000112221d00000000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000711110002288888800001111000d0000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000071111100022888882220011100000d000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000071111100008888882220111100000d000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000007111111100088888822201110000001d00000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000007111111111188888800001110000011d00000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000007111111111110000000011110000011d00000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000007111111111110000000011111000111d00000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000771111111111000000001111111111d100000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000077711111111000000001111111111d1100000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000077711111111000000011111111111d5100000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000007777111111100000001111111111d11100000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000007776661111110000001111111155515100000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000776766661111100011111155555511000000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000666666666611111111dd5d5555510000000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000067666666ddddddddddd555555100000000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000006666666d6ddddddddd5d5555000000000000000000000000000000000000000000000000000
-000000000000000000000000000000000000000000000000000000066666ddddddddddd555500000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000006dd6dddddddd5500000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000dddddddd00000000000000000000000000000000000000000000000000000000000
-00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000000000000000001101110111011101110000001111100011111000000000000cc0c0010100110101011101010101011101010111000000000000000000000
-000000000000000010000100101010100100000011010110110001100000cc000cccc00010101010101010101010101001001010010000000000000000000000
-0000000000000000111001001110110001000000111011101101011000000cc11ccccc0011101010101011001110110001001100010000000000000000000000
-000000000000000000100100101010100100000011010110110001100000cccccccc000000101010101010100010101001001010010000000000000000000000
-0000000000000000110001001010101001000000011111000111110000000cccccc1000011101100011010101110101011101010111000000000000000000000
-00000000000000000000000000000000000000000000000000000000000001cccc10000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000065055055030333333333303055055056000000000000000000000000000000000000
+0000000000000000000000000000000000000000000000000000000000006050505503a3336666333a3055050506000000000000000000000000000000000000
+000088888888888888888888888888888000000000000000000000000000650550503a333333333333a305055056000111111111111111111111111111110000
+00008888888888888888888888888888800000000000000000000000000065550550303330000003330305505556000171117771777111117771117177710000
+0000888888888888888888888888888888888888888888000000000000006055050000000aaaaaa0000000505506000171117171717111111171171111710000
+000088888888888888888888888888888888888888888800000000000000650aa000009a222aa222a900000aa056000171117771777111117771171117710000
+00009999999999999999999999999999999999999999999999990000000065505550309a65aaaa56a90305550556000171117171711111117111171111710000
+00009999999999999999999999999999999999999999999999990000000065550550309aaaaaaaaaa90305505556000177717171711111117771711177710000
+000000000000000000000000000000000000000000000000000000000000655550503309aaff9faa903305055556000111111111111111111111111111110000
+0000000000000000000000000000000000000000000000000000000000006055505033300fff9ff0033305055506000177711771177111117711117171710000
+00000000000000000000000000000000000000000000000000000000000060005050333300f44f00333305050006000171717171711111111711171171710000
+00000000000000000000000000000000000000000000000000000000000060000054443330ffff03334445000006000177717171777111111711171177710000
+00000000000000000000000000000000000000000000000000000000000065000054444990777709944445000056000171117171117111111711171111710000
+00000000000000000000000000000000000000000000000000000000000065555000049990f99f09994000055556000171117711771111117771711111710000
+000000000000000000000000000000000000000000000000000000000000600000555000000ff000000555000006000111111111111111111111111111110000
+00000000000000000000000000000000000000000000000000000000000065555555555000000050055555555556000000000000000000000000000000000000
+00000500000000000000000000000000500000000000000000000000000066666666666666666666666666666666000050000000000000000000000000000000
+11111551111111111111111111111115511111111111111111111111111111111111155111111111111111111111111551111111111111111111111111111111
+00000555000000000000000000000055500000000000000050000500000000000000055500000000000000000000005550000000000000005000050000000000
+11111515551111111111111111115551511111115111111155115511111115111111151555111111111111111111555151111111511111115511551111111511
+11111115a51111111111111111115a511111115151111111511115111111151511111115a51111111111111111115a5111111151511111115111151111111515
+11111155551111111111111111115555111111555511111155555511111155551111115555111111111111111111555511111155551111115555551111115555
+22222555552222222222222222225555522222555d2222225555552222222555222225555d222222222222222222555552222255522222225555552222222555
+11111555551111115555551111115555511111595ddd11115555551111151595111115555d111111555555111111555551111159515111115555551111151595
+222225aa5525222559999552225255aa5222225555ddd2525955952522255555222225aadd25222559999552225255aa52222255555222525955952522255555
+222225555525222255555522225255555222225555ddd552555555255225555522222555d5252222555555222252555552222255555225525555552552255555
+2252255995252522555555225252599552252255555ddd525aaaa525552555552252255dd5252522555555225252599552252255555255525aaaa52555255555
+e555e55555e555ee555555ee555e55555e555e55aa5dcccccccccce555eccccccccccccc55e555ee555555ee555e55555e555e55aa5e555e555555e555e5aa55
+2252255aa52595225555552259525aa552252255555dddd255aa55ccccc55555225225dda52595225555552259525aa5522522555552595255aa552595255555
+e555e55555e555ee555555ee555e55555e555e5aa55eddde555555e555e55aa5e555e5d555e555ee555555ee555e55555e555e5aa55e555e555555e555e55aa5
+555ee59955e555ee555555ee555e55995ee55555555edddd5a55a5e595e55555555eedd955e555ee5555566e555e55995ee55555555e595e5a55a5e595e55555
+5555e55555e5555555555555555e55555e555555555e5dccc55555cccce5555cccccccd555e5555555555555555e55555e555555555e555e555555e555e55555
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddccccceeeeccccceeeeeddeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+222222222222222222222222222222222222222222222dddd2222222142222222122dd2222222222222222222222222222222222222222222222222222222222
+1111111111111111111111111111111111111111111111dddd1a5aaa1111111111add11111111111111111111111111111111111111111111111111111111111
+1111111111111111111111111111111111111111111111dda5a555ddddddddddd55ad11111111111111111111111111111111111111111111111111111111111
+11111111111111111111111111111111111111111115dad55555ddddddddddddd555511111111111111111111111111111111111111111111111111111111111
+11111111111111111111111111111111111111111a5555ddd55555555555555555d55a1111111111111111111111111111111111111111111111111111111111
+111111111111111111111111111111111111a11d5555555dddddddddddddddddd55555a111111111111111111111111111111111111111111111111111111111
+11111111111111111111111111111115dddddddddd5555555555555555555555555dddd511111111111111111111111111111111111111111111111111111111
+11111111111111111111111111a1555555ddddddddddddddddddddddddddddddddddd5555a111111111111111111111111111111111111111111111111111111
+1111111111111111111111115aaa55555555dddddddddddddddddddddddddddddddd5555aaa11111111111111111111111111111111111111111111111111111
+11111111111111111111155555a55555555555dddddddddddddddddddddddddddd5555555a511111111111111111111111111111111111111111111111111111
+11111111111111111d555555555555555555555555555555555555555555555555555555555d1111111111111111111111111111111111111111111111111111
+1111111111111ddddddd55555555555555555555555555555555555555555555555555555dddd111111111111111111111111111111111111111111111111111
+1111a1111dddddddddddddd55555555555555555555555555555555555555555555555dddddddda1111111111111111111111111111111111111111111111111
+111aaadddddddddddddddddcc5555555555555555555555555555555555555555555dddddddddaaa111111111111111111111111111111111111111111111111
+1dddaddddddddddddddccccdddd555555555555555555555555555555555555555ddddddddddddad111111111111111111111111111111111111111111111111
+dddddddddddddddddccdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd11111111111111111111111111111111111111111111111
+dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd1111111111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd111111111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd111111111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd511111111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd55551111111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5555555111111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd555555555511111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd55555555555551111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5555555555555555111111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd555555555555555555511111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd55555555555555555555551111111111111111111111111111111111111
+ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd5555555555555555555555555111111111111111111111111111111111111
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555511111111111111111111111111111111111
+55555555555555555555555555565555555555555555555555555555555555555555555555555555555555555555551aaa111111111111111111111111111111
+5555555555555555555555555565555555555555555555555555555555555555555555555555555555555555555555aaaaa11111111111111111111111111111
+555555555555555555555555565555555555555555555555555555555555555555555555555555555555555555555aaaaaaa1111111111111111111111111111
+555555555555555555555555655555555555555555555555555555555555555555555555555555555555555555555aaaaaaa1111111111111111111111111111
+555555555555555555555556555555555555555555555555555555555555555555555555555555555555555555555aaaaaaa1111111111111111111111111111
+5555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555aaaaa11111111111111111111111111111
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555aaa551111111111111111111111111111
+555555555555555555555555555555555555555555555555555555555555555555555cc555555555555555555555555555555111111111111111111111111111
+555555555555555555555555555555555555555555555555555555555555577755551ccc55555555555555555555555555555511111111111111111111111111
+55555555555555555555555555555555555555555555555555555555555777ccc5551ccc55555555555555555555555555555551111111111111111111111111
+55555555555555555555555555555555555555555555555555555555555cccccc555666c15555555555555555555555555555555111111111111111111111111
+55555555555555555555555555555555555555555555555555555555555cccccc556777615555555555555555555555555555555511111111111111111111111
+555555555555555555555555555555555555555555555555555555555557ccccc556777615555555555555555555555555555555551111111111111111111111
+555555555555555555555555555555555555555555555555555555555555cccccc16777600555555555555555555555555555555555111111111111111111111
+55555555555555555555555555555555555555555555555555555cc55555cccc1111666000055555555555555555555555555555555511111111111111111111
+55555555555555555555555555555555555555555555555555555cccc66651111155550000055555555555555555555555555555555551111111111111111111
+55555555555555555555555555555555555555555555555555555ccc677761111155550000005555555555555555555555555555555555111111111111111111
+555555555555555555555555555555555555555555555555555555cc677761115555500000000555555555555555555555555555555555511111111111111111
+55555555555555555555555555555555555555555555555555555511677761555000500000000555555555555555555555555555555555551111111111111111
+55555555555555555555555555555555555555555555555555555511166655500000000000000555555555555555555555555555555555555111111111111111
+55555555555555555555555555555555555555555555555555555511100555000000000000005555555555555555555555555555555555555511111111111111
+55555555555555555555555555555555555555555555555555555550000000000000000000555555555555555555555555555555555555555551111111111111
+55555555555555555555555555555555555555555555555555555550000000000000000055555555555555555555555555555555555555555555111111111111
+55555555555555555555555555555555555555555555555555555550000000000000055555555555555555555555555555555555555555555555511111111111
+55555555555555555555555555555555555555555555555555555550000000000005555555555555555555555555555555555555555555555555551111111111
+55555555555555555555555555555555555555555555555555555550000000000055555555555555555555555555555555555555555555555555555111111111
+55555555555555555555555555555555555555555555555555555555000000000555555555555555555555555555555555555555555555555555555511111111
+55555555555555555555555555555555555555555555555555555555000000555555555555555555555555555555555555555555555555555555555551111111
+55555555555555555555555555555555555555555555555555555555500055555555555555555555555555555555555555555555555555555555555555111111
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555511111
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555551111
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555111
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555511
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555551
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
+55555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555555
 
 __map__
-a0800000000080000040007e840000007c8400000078880000007c840000007e84000000800000c0827e840000007c8400000078880000007c840000007e8400000080a09f500080880040827e840000007c8400000078980000007c840000007e84000000800000000082840000008484000000888800000084840000008284
-0000007e840000007c8400000078880000007c840000007e8400000080840000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a88000000000828184000084818400008882840000848184000082818400007e818400007c8184000078828400007c818400007e818400007e840000007c8400000078880000007c840000007e84000000800000d0007e840000007c840000007a980000007c840000007e84000000800000408282848e000084849f00008890
-9f003884849f000082849f00007e849f00007c849f000078909f00007c848e00007e84000000808800c0827e840000007c840000007a880000007c840000007e84000000808400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-ac8000000000828200000084820000008884000000848200000082828e00007e828e00007c8200000078840000007c820000007e828e000080848e0000808400000080848e6082808400000080848ea0828084000000828200000084840000008a980000008484000000828200000080848c000080848ca08280888400008084
-86608280848600007e820000007c84000000769000c0827c840000007e82000000828200000084840000008a980040828484000000828200000080000000008282000000848400000088840000008484000000828200000080840000000000000000000000000000000000000000000000000000000000000000000000000000
-9580000000007e828e00007c820000007898beff827c820000007e828e000080000000007e820000007c90be00007e8200000080008ec0827e828e00007c900000007e848e00007c840000007688be00007c840000007e820000008086004082808800018280008e200000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a6800000000082828e000084840000008888000000848400000082828e0000808c00c000808c0040008000be000082828e000084840000008890000000848400000082828e00007e820000007c84be00007a8800c0007c840000007e8200000080000000007e820000007c8200000076900000007c820000007e820000008084
-8e0000828200000084820000008a900000008482000000828200000080000000008282000000848800600088880000008488006000828200000080820000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-a0800000000082828e00008484000000888800000084840000008288000000848400a082888800a082848400000082820000008000000000820000c082840000c082868800c08288880000008482000000820000e08284820000008a90000000848200708282820070827e820070827c8200000076900040827c820000008282
-8e7082828200708284820070828a880060828482007082828200708280888e01820000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 1050783088000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 202058105b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 2010380038000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -2065,8 +2144,8 @@ __sfx__
 010c001010b5413b7513b650000010b5413b7513b650000010b5413b7513b650000004b6407b7507b6504b2504b54000000000000000000000000000000000000000000000000000000000000000000000000000
 010c00021807418075000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010100080c2200c2310c2410c2510c2510c2410c2310c2210f20313203162030d203142030c2030f203172031220316203162030d203122031620312203162030c2030c2030c2030c2030c2030c2030c2030c203
-010c000400750077500c7500770000701007010070000700007000070000700007000070000700007000070000700007000070000700007000070000700007000070000700007000070000700007000070000700
-010c002024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0024b0224b0224b0224b0224b0224b0224b0230b00
+010c00200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010c00100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010c00200c1730c11301600000003c6333c6150c1730c1133c6333c6153c6053c6050c1730c113000003c6053c6333c6150c1730c113000000000000000000003c6333c61500000000003c6333c6150000000000
 010c00200c1730c113016000000000000016000c1730c113000000000000000000000c1730c113000000000000000000000c1730c113000000000000000000003c6333c61500000000003c6333c6150000000000
 010c00200c1730c11301600016003c6333c604026040000000000186050c1730c1133c6333c6043c6033c6030c1730c11300000000003c6333c6043c6000000000000186050c1730c1133c6333c6043c6033c633
@@ -2097,34 +2176,20 @@ __sfx__
 010c00102cb742cb752cb750000030b7433b7533b75000002cb742cb502cb7020b522cb7220b5227b550cb0500000000000000000000000000000000000000000000000000000000000000000000000000000000
 010c001030b7430b5030b7024b5230b7224b5230b550000032b7432b5032b7026b5232b7226b5232b550cb0500000000000000000000000000000000000000000000000000000000000000000000000000000000
 010c00202bb742bb752bb75000002fb7432b7532b75000002bb742bb502bb701fb522bb721fb522bb550bb052fb742fb502fb7023b522fb7223b522fb550000032b7432b5032b7026b5232b7226b5232b5507b00
-0130002018b1018b3118b5118b5118b5118b5218b3218b1218b1018b3118b5118b5118b5118b5218b3218b121fb101fb311fb511fb511fb511fb521fb321fb121bb101bb311bb511bb511bb511bb521bb321bb12
-0130000018b1018b3118b5118b5118b5118b5118b5218b321bb101bb311bb511bb511bb511bb511bb521bb3227b1027b3127b5127b5124b5124b5124b5224b3222b1122b3122b5122b511fb511fb511fb521fb32
-011800200c7540c7540c1730c754137540c6050c7540c7000c7540c7540c6750c75413754187000c7540c7050c7540c7540c1730c754137540c1030c1730c7050c7540c7540c6750c7540c675137040c7540c705
-0118002018b5018b5018b3118b110cb5018b5018b310cb5018b5018b5018b3118b110cb5018b5018b310cb5016b5016b4015b5015b4013b5013b4016b5016b4013b5013b4011b5011b4013b5013b5113b4113b31
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 010800000c1760c15618136181162a100341003e1003f100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100
 01080000181762415624136301162a100341003e1003f100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100001000010000100
 007c00000020024255242552425524255302550020000200002003520000200002000020000200002000020000200002000020000200002000020000200002000020000200002000020000200002000020000200
 000c0000186750c635000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 000200002467324673246632466318653186430c6330c623000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00040000302642f6502d2642c650292642865025254246401f2441e63015234146200360411630016000f630016000d630016000b6300a6200962008610076100760000200002000020000200002000020000200
-0004121409234086200c2340c6200f2340e620132441263017244166301b2441a6301e2441d634202441f63422254216442425423644292042860425204246041f2041e604152041460409004086040020400204
-0108161800b3000b1001b3001b1002b3002b1003b4003b1004b4004b1005b4005b1006b4006b1007b4007b1008b4008b1009b4009b100ab500ab200bb500bb200000000000000000000000000000000000000000
-0108161801b3001b1002b3002b1003b3003b1004b4004b1005b4005b1006b4006b1007b4007b1008b4008b1009b4009b100ab400ab100bb500bb200cb500cb220000000000000000000000000000000000000000
+0004121409224086200c2340c6200f2340e620132441263017244166301b2441a6301e2441d634202441f63422254216442425423644292042860425204246041f2041e604152041460409004086040020400204
+0008161800b4000b1001b4001b1002b4002b1003b5003b2004b5004b2005b5005b2006b5006b2007b5007b2008b5008b2009b5009b200ab600ab300bb600bb300000000000000000000000000000000000000000
+0008161800b4000b1001b4001b1002b4002b1003b5003b2004b5004b2005b5005b2006b5006b2007b5007b2008b5008b2009b5009b200ab600ab300bb600bb300000000000000000000000000000000000000000
 010800001f5560c5360c5260c51600500005000050000500005000050000500005000050000500005000050000500005000050000500005000050000500005000050000500005000050000500005000050000500
-011800200c7540c7540c1730c754137540c6050c7540c7000c7540c7540c6750c75413754187000c7540c7040c7540c7540c1730c754137540c1030c1730c7050c1730c7540c6750c754137540c1730c6750c704
-011800200c1730c7540c6750c754137540c1730c6750c7540c1730c7540c6750c754137540c1730c6750c7540c1730c7540c7540c173137540c7540c1730c7040c7540c1730c7540c7540c675137540c6750c605
-011800100c173187540c675187541f7540c1730c675187540c173187540c675187541f7540c1730c6751870400000000000000000000000000000000000000000000000000000000000000000000000000000000
-011800000cb500fb5013b500fb5018b501bb501fb501bb500fb5013b5016b5013b501bb501fb5022b501fb500fb5013b5016b5013b501bb501fb5022b501fb5013b5017b5018b501ab501fb5023b5024b5026b50
-0118000024b5024b5024b3124b1118b5024b5024b3118b5024b5024b5024b3124b1118b5024b5024b3118b5022b5022b4021b5021b401fb501fb4022b5022b401fb501fb401db501db401fb501fb511fb411fb31
-0118000018b501bb501fb501bb5024b5027b502bb5027b501bb501fb5022b501fb5027b502bb502eb502bb501bb501fb5022b501fb5027b502bb502eb502bb501fb5023b5024b5026b502bb502fb5030b5032b50
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000003c64033650366502a6402e6402363027620196201e6200a61010610026000160000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __music__
 01 0a150f1a
 00 0b160f1b
@@ -2136,15 +2201,15 @@ __music__
 00 0c120921
 00 0d130922
 02 0e140623
-01 4a556624
-00 4b562625
-01 4c573227
-01 4d583327
-00 4e593435
-00 41423335
-00 41423436
-00 4a413436
-00 41423437
-02 41423337
-02 4e4e4844
+00 4a504f55
+00 41424344
+00 41424344
+00 41424344
+00 41424344
+00 41424344
+00 41424344
+00 0a010f4f
+00 41424344
+00 41424344
+02 0e4e0844
 

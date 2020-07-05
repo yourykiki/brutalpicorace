@@ -110,8 +110,8 @@ function init_game()
  if nb_player==2 then
   height,nb_rb,cdz,
   rd_grd1,rd_grd2,rd_grd3=
-   64,9,48,
-   0.5,0.62,0.75
+   64,12,48,
+   0.55,0.65,0.75
  else
   height,nb_rb,cdz,
   rd_grd1,rd_grd2,rd_grd3=
@@ -434,19 +434,26 @@ function updateship(p,v,vn,sspp,
  elseif not ctrlp.boost
   and ctrlp.cdn_bst>0 then
   -- applying
-  if (p<=nb_player) sfx(45,(p-1)*2)
+  playersfx(p,45)
   spdp.bz+=ctrlp.cdn_bst*0.5
   ctrlp.cdn_bst,ctrlp.can_bst=
-   -ctrlp.cdn_bst*2,
-   false
+   -ctrlp.cdn_bst*2,false
  else 
   local bef=ctrlp.can_bst
   ctrlp.cdn_bst=min(0,
    ctrlp.cdn_bst+recover_cdn(sspp))
   ctrlp.can_bst=not btn(2,p-1) and ctrlp.cdn_bst>=0
-  if not bef and ctrlp.can_bst
-    and p<=nb_player then sfx"49"
+  if not bef and ctrlp.can_bst then
+   playersfx(p,49)
   end
+ end
+ -- 1.5 secs for locking drafting
+ if ctrlp.drft==45 then
+  playersfx(p,62)
+ end
+ if ctrlp.drft>=60 then
+  spdp.bz,ctrlp.drft=
+   min(spdp.bz+3,6),0
  end
  spdp.bz=max(0,spdp.bz-0.025)
  local dy=(v.y-vn.y)/8
@@ -463,7 +470,7 @@ function updateship(p,v,vn,sspp,
  if not ctrlp.accel and
     not ctrlp.brake then
   spdp.z=sgn(spdp.z)
-   *max(0,abs(spdp.z)-0.2)
+   *max(0,abs(spdp.z)-0.05)
   spdp.prc=get_r_accel(
    shipp.r_acc,spdp.z)
   spdp.gz=lerp(spdp.gz,dy,0.05)
@@ -479,12 +486,15 @@ function updateship(p,v,vn,sspp,
   +sin(atan2(spdp.x,spdpz))
    *spdpz*sgn(spdpz)
  sssp[p].z=sspp.z
- -- speed fx
- if spdpz>12 and frm%10==0 then
-  p_boost.nb=flr(spdpz-11)*1.5
+ -- speed/boost/draft fx
+ if spdpz>12 and frm%10==0 
+  or ctrlp.drft>0 then
+  p_boost.nb=ctrlp.drft>0
+   and 1 or flr(spdpz-11)*1.5
   create_particles(p_boost,
    sspp,spdp,p)
  end
+
  -- move ship left/right
  -- phx pseudo phy
  local phx=
@@ -498,9 +508,19 @@ function updateship(p,v,vn,sspp,
    --close enough for testing
    local shippn,ssppn,spdpn=
     ship[pn],ssp[pn],spd[pn]
+   -- drafting
+   if ctrlp.drft>=45 or
+     is_collide(sspp,ssppn,
+     shipp,shippn,0.15)
+     and sspp.z<ssppn.z
+     and spdp.z>6 then
+    ctrlp.drft+=1
+    else
+    ctrlp.drft=0
+   end
    -- collision ?
    if is_collide(sspp,ssppn,
-     shipp,shippn,1) then
+     shipp,shippn,2) then
     -- response
     local resx,resz,sgnx,mn_m=
      spdp.x+phx/2,
@@ -800,7 +820,7 @@ function draw_game()
   pal()
  end
  -- debug
- print(stat(1),0,0,6)
+-- print(stat(1),0,0,6)
 -- print("cpu="..stat(1))
 --  .." fps="..stat(7)
 --  .." ram="..stat(0)
@@ -1670,7 +1690,7 @@ function loadship(p,nbss)
    frm=0},
   {x=0,y=0,z=1},
   {x=0,z=0,gx=0,gz=0,prc=0,cdn=0,bz=0},
-  {cdn_bst=0,can_bst=true},1
+  {cdn_bst=0,can_bst=true,drft=0},1
  sssp[p]={x=ssp[p].x,y=0,z=56}
  ship[p]=ship_info[nbss+1]
  ssp[p].hp=100
@@ -1740,11 +1760,9 @@ function is_collide(sspp,ssppn,
  shipp,shippn,dz)
  --/8 /4 scale
  return
-  abs(sspp.xflat/8
-   -ssppn.xflat/8)
+  abs(sspp.xflat-ssppn.xflat)/8
    <=shipp.width+shippn.width
-  and abs(sspp.z/4
-   -ssppn.z/4)*dz
+  and abs(sspp.z-ssppn.z)/4*dz
    <=shipp.height+shippn.height
 end
 
@@ -1754,6 +1772,10 @@ end
 
 function getdamage()
  return max(2,ai_skill)
+end
+
+function playersfx(p,nfx)
+ if (p<=nb_player) sfx(nfx,(p-1)*2)
 end
 __gfx__
 000880000000000000000000000000000000000000500000000000006505505503c3333333333c3055055056000000002229999999aaaaa77777777777777700
@@ -2108,7 +2130,7 @@ __sfx__
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0006000002610066100f620176201f6302763030640356501b640166401364011630106300f6300d6300c6300a630096200762006620056200562004620036200361003610036100261001610016000060000000
 001000003c64033650366502a6402e6402363027620196201e6200a61010610026000160000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 __music__
 01 0a150f1a

@@ -1,0 +1,207 @@
+[#54000#]
+
+TODO
+ free tokens
+  find idea
+1.0.3:
+ > We can finally die !
+ > Fix live rank
+ > Fix a bug where boost had not influence on centrifugal force, so now be carefull with boost spamming !
+ > Add chronometer and timeboard
+ > Add 3 tracks
+ > Add a 2 channels music
+ > Add controls helps
+ > Adaptive difficulty on boost, AI use less often boost when you're last or 3rd
+ > Store best all race time per track and per difficulty
+ > Change ship names
+1.0.2:
+ > Bots color
+ > Bots Difficulty 
+ > Changing camera after race
+ > Better end screen 
+ > Room for 3 new tracks
+ > Better boost FX
+ > Fix boost sfx in multi
+ > fix degats perte vitesse quand tout seul
+ > shipp.hp ...
+ > SDX sky cam
+ideas 
+ 1 HP spz>140 + particle feedback  (create_trail) / gfx in single player <> shakefx on ship not cam ?
+ (4 balancing tests, if necessary boost tweak 140 max 110>150, 120>145, 130>140 ?? )
+ Bonus 
+   corrupt screen
+   boost 2d effect "manga"
+   minimap
+   others road types ?
+   hazard on the road
+
+   BEST race time
+   EASY NORM HARD
+   0123 4567 89AB CDEF
+1  ____ ____ ____ ____  TRACK 1
+2  ____ ____ ____ ____  TRACK 2
+3  ____ ____ ____ ____  TRACK 3
+4  ____ ____ ____ ____  TRACK 4
+5  ____ ____ ____ ____  TRACK 5
+6  ____ ____ ____ ____  TRACK 6
+7  ____ ____ ____ ____ 
+8  ____ ____ ____ ____ 
+
+
+parse_trk
+--  printh("curv="..trk[i].curv
+--   .." len="..(trk[i].len or "0")
+--   .." frc="..(trk[i].frc or "0")
+--   .." hgt="..(trk[i].hgt or "0")
+--   .." hln="..(trk[i].hln or "0"))
+
+TODO PARSE TRK=============================================
+function parse_trk()
+    local trk={}
+    for i=1,read_byte() do
+        trk[i]={curv=read_byte(),len=read_byte(),frc=read_byte(),hgt=read_byte(),hln=read_byte()}
+    end
+    return trk
+end
+
+function read_byte()
+    local val=peek(0x2000+byte_offset)-128
+    byte_offset += 1
+    return val
+end
+
+function parse_trk(trk_str)
+ local trk,seg,tmp={},{},nil
+ while #trk_str>0 do
+  i=charidx(trk_str,",","|")
+  sep,eqidx=
+   sub(trk_str,i,i),
+   charidx(trk_str,"=")
+   
+  seg[sub(trk_str,1,eqidx-1)]=
+   tonum(
+    sub(trk_str,eqidx+1,i-1))
+
+  of=1
+  if sep=="," then
+   add(trk,seg)
+   seg={}
+   of=2
+  end
+  trk_str=sub(trk_str,i+of)
+ end
+ return trk
+end
+
+function charidx(str,sep1,sep2)
+ for i=1,#str do
+  local tmp=sub(str,i,i)
+  if tmp==sep1 or tmp==sep2 then
+   return i
+  end
+ end
+ return 0
+end
+===========================================================
+
+ia_skill
+0-1---2---3
+  1 
+      2 
+	      3 
+rnd(10)>6 -> easy
+rnd(10)>5 -> normal
+rnd(10)>4 -> hard
+
+---------
+-- cpu --
+---------
+hasbit + band
+0.7364
+0.6473
+
+direct band
+0.7291
+0.64
+
+before drawvoxel
+0.6694
+0.58
+
+pre
+0.6547
+0.573
+
+0.6401
+0.5657
+
+0.6254
+0.551
+
+0.6178
+0.5433
+
+0.6219
+0.511
+
+-- light fade
+0.66-0.67
+0.5367
+
+token optim:
+7435 before "palette" function
+7419 after road color
+7365 after sprite sheet color
+7356 after optim peek_sprite
+7202 after optim init ship
+7189 after optim init var 
+7167 after locals optim
+7145 after simple proj function
+7030 after draw_part_line
+(7015 after proj_fct_xy, but + 0.2 cpu)
+
+--SAVE
+ --cross
+ --rectfill(cx-1,cy,cx+1,cy,7)
+ --rectfill(cx,cy-1,cx,cy+1,7)
+
+-- drawroad, before comment --drawing road
+--  r.x1=cx+fct*(xl-cam.x)+cfx
+--  r.x2=cx+fct*(xr-cam.x)+cfx
+--  r.y=cy-fct*(iy-cam.y)
+
+--  r.xl1=cx+fct*(xl-32-cam.x)+cfx
+--  r.xr1=cx+fct*(xr+32-cam.x)+cfx
+--  r.y2=cy-fct*(iy+16-cam.y)
+--  r.xl2=cx+fct*(xl-64-cam.x)+cfx
+--  r.xr2=cx+fct*(xr+64-cam.x)+cfx
+--  r.xl3=cx+fct*(xl-80-cam.x)+cfx
+--  r.xr3=cx+fct*(xr+80-cam.x)+cfx
+--  r.y3=cy-fct*(iy+48-cam.y)
+--  r.y4=cy-fct*(iy+128-cam.y)
+
+-- corrupt screen glitch
+-- local source=rnd(flr(0x6000+8192))
+--	local range=flr(rnd(64))
+--	local dest=0x6000+rnd(8192-range)-2
+--	memcpy(dest,source,range)
+
+ -- right
+ rd_info={
+  {dx=16,dy=80,sx=120,sy=48,fl=131,
+   dst=89,rotz=0.7814},--atan2(16,80)
+  {dx=32,dy=32,sx=88,sy=16,fl=91,
+   dst=40,rotz=0.875},--32,32
+  {dx=32,dy=16,sx=56,sy=0,fl=56,
+   dst=35.7,rotz=0.9262},--32,16
+  -- center
+  {dx=112,dy=0,sx=-56,sy=0,fl=-56,
+   dst=112,rotz=1},
+  --left
+  {dx=32,dy=-16,sx=-88,sy=16,fl=-91,
+   dst=35.7,rotz=1.0738},--1+atan2(32,-16)
+  {dx=32,dy=-32,sx=-120,sy=48,fl=-131,
+   dst=40,rotz=1.125},--32,-32
+  {dx=16,dy=-80,sx=-136,sy=128,fl=-220,
+   dst=89,rotz=1.2186}--16,-80
+ }
